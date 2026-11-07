@@ -390,7 +390,7 @@ local property_defaults = {
 	PlaceholderText = "", PlaceholderColor3 = Color3.fromRGB(178, 178, 178), ClearTextOnFocus = true,
 	MultiLine = false, TextEditable = true, CursorPosition = 1,
 	Image = "", ImageColor3 = white, ImageTransparency = 0, ScaleType = Enum.ScaleType.Stretch,
-	ImageRectOffset = Vector2.zero, ImageRectSize = Vector2.zero, SliceCenter = Rect.new(0, 0, 0, 0), SliceScale = 1,
+	TileSize = UDim2.fromScale(1, 1), ImageRectOffset = Vector2.zero, ImageRectSize = Vector2.zero, SliceCenter = Rect.new(0, 0, 0, 0), SliceScale = 1,
 	HoverImage = "", PressedImage = "",
 	AutoButtonColor = true, Modal = false, Selected = false,
 	CanvasSize = UDim2.new(0, 0, 2, 0), CanvasPosition = Vector2.zero, AutomaticCanvasSize = Enum.AutomaticSize.None,

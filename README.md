@@ -1,7 +1,9 @@
 # Bright
 
-UI building blocks on top of [vide](https://github.com/centau/vide). Started from the playground `ui_kit` module.
-Change `src/theme.luau` to restyle everything built with it. All sizes are scale (no px, no UITextSizeConstraint).
+UI building blocks on top of [vide](https://github.com/centau/vide), in the "brainrot / cake" cartoon style:
+dark translucent navy windows, glossy studded headers, chunky 3D candy buttons, and heavy white text with a thick dark outline.
+Change `src/theme.luau` to restyle everything built with it: palettes, text gradients, fonts, outlines and asset ids.
+All sizes are scale (no px, no UITextSizeConstraint).
 
 ## Use
 
@@ -14,25 +16,30 @@ bright = "iam9pasa/bright@0.1.0"
 ```lua
 local ui = require(ReplicatedStorage.Packages.bright)
 
-ui.panel {
-	Name = "main",
-	Size = UDim2.fromScale(1, 1),
-	Parent = frame,
-	ui.text { Text = "Inventory", style = "title", align = "left", Size = UDim2.fromScale(0.3, 0.05) },
-	ui.scroll_grid { Name = "list", Size = UDim2.fromScale(1, 0.7), columns = 6 },
-	ui.button { text = "Equip", style = "primary", Size = UDim2.fromScale(0.2, 0.08) },
+ui.window {
+	title = "Inventory",
+	icon = ui.theme.asset.icon.inventory,
+	palette = "blue",            -- blue, orange, gold, amber, green, red, purple, pink, grey
+	shape = "inventory",         -- standard, inventory, large, popup (reference proportions)
+	close = function() end,
+	Parent = screen_gui,
+
+	ui.scroll_grid { columns = 4, Size = UDim2.fromScale(0.65, 0.8), Position = UDim2.fromScale(0.02, 0.17),
+		ui.item_card { name = "Sharkalino", image = id, value = "$1.2K/s", rarity = "legendary" },
+	},
+	ui.button { text = "Equip", palette = "green", Size = UDim2.fromScale(0.25, 0.11) },
 }
 ```
 
-Full API: header comment of `src/init.luau`.
+Full API: header comment of `src/init.luau`. The pieces:
+- **Windows:** `window`, `header`, `card`, `panel`.
+- **Text:** `text` (styles `cash`, `legendary`, `epic`, `rare`, `common`, `gems`, `item`, `rainbow`), `title` (white over dark drop edge).
+- **Controls:** `button` (3D candy, `palette` and `disabled` can be vide sources), `close_button`, `icon_button`, `tab`, `input`, `hud_button`, `hit`.
+- **Content:** `item_card`, `sunburst`, `studs`, `progress`, `icon`.
+- **Layout:** `row`, `column`, `scroll_grid { columns }`, `scroll_list`, `padding`, `square`.
+- **Screen:** `device()`, `adaptive()`.
 
-## Design rules built in
-
-- Text colors pass WCAG AA contrast (4.5:1) on cards and hovered cards.
-- `ui.button { style = "primary" }` uses the accent. Keep it for the one main action per screen.
-- Buttons get an accent focus ring for gamepad and keyboard (`SelectionImageObject`).
-- `ui.scroll_grid { columns = n }` sizes cells from the width, so the column count stays the same on every screen.
-- `ui.device()` and `ui.adaptive()` handle phones, which are physically small: use bigger proportions or a UIScale there. Everything stays scale.
+Asset ids for the stud texture, sunburst and icons live in `theme.asset`. Replace them with your own game's ids.
 
 ## Simulator: see the UI without Studio
 

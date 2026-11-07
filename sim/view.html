@@ -213,7 +213,7 @@ const blend = (under, over, alpha) => ({ r: under.r + (over.r - under.r) * alpha
 
 const FONT_STACKS = {
 	BuilderSans: `"Builder Sans", Inter, "Segoe UI", system-ui, sans-serif`,
-	GothamSSm: `Gotham, Montserrat, Inter, system-ui, sans-serif`,
+	GothamSSm: `Gotham, "Gotham SSm", Montserrat, Inter, system-ui, sans-serif`,
 	Montserrat: `Montserrat, Inter, system-ui, sans-serif`,
 	SourceSansPro: `"Source Sans 3", "Source Sans Pro", Inter, system-ui, sans-serif`,
 	FredokaOne: `"Fredoka One", Fredoka, Inter, system-ui, sans-serif`,
@@ -454,7 +454,8 @@ function render(node, parent_el, x, y, w, h, chain, path, screen) {
 		const border = prop(node, "BorderSizePixel");
 		if (border > 0 && !corner) el.style.boxShadow = `0 0 0 ${border}px ${css(prop(node, "BorderColor3"), 1 - bg_t)}`;
 	}
-	if (prop(node, "ClipsDescendants") || node.c === "ScrollingFrame") el.style.overflow = "hidden";
+	if (prop(node, "ClipsDescendants") || node.c === "ScrollingFrame" || node.c === "CanvasGroup") el.style.overflow = "hidden";
+	if (node.c === "CanvasGroup" && node.p.GroupTransparency) el.style.opacity = 1 - node.p.GroupTransparency;
 
 	const is_text = TEXT_CLASSES.has(node.c);
 	const stroke = child_of(node, "UIStroke");
@@ -505,15 +506,33 @@ function draw_image(el, node, w, h) {
 	div.className = "rbx-img";
 	const color = prop(node, "ImageColor3");
 	const src = DATA.assets && DATA.assets[image];
-	const fit = { Fit: "contain", Crop: "cover", Tile: "auto" }[prop(node, "ScaleType")] || "100% 100%";
+	let fit = { Fit: "contain", Crop: "cover" }[prop(node, "ScaleType")] || "100% 100%";
+	let repeat = "no-repeat", position = "center";
+	if (prop(node, "ScaleType") === "Tile") {
+		// TileSize is a UDim2 of the image's own size
+		const [tw, th] = udim2(node.p.TileSize || U2(1, 0, 1, 0), w, h);
+		fit = `${Math.max(tw, 1)}px ${Math.max(th, 1)}px`;
+		repeat = "repeat";
+		position = "0 0";
+	}
 	div.style.opacity = 1 - transparency;
 	const white = color.r > 0.999 && color.g > 0.999 && color.b > 0.999;
-	if (src && white) {
-		Object.assign(div.style, { backgroundImage: `url("${src}")`, backgroundSize: fit });
+	const gradient = child_of(node, "UIGradient");
+	if (src && gradient) {
+		// uigradient multiplies the image: blend the image over the gradient, cut to the image alpha
+		const url = `url("${src}")`;
+		Object.assign(div.style, {
+			background: `${url} ${position} / ${fit} ${repeat}, ${gradient_css(color, 1, gradient)}`,
+			backgroundBlendMode: "multiply",
+			webkitMaskImage: url, maskImage: url, webkitMaskSize: fit, maskSize: fit,
+			webkitMaskRepeat: repeat, maskRepeat: repeat, webkitMaskPosition: position, maskPosition: position,
+		});
+	} else if (src && white) {
+		Object.assign(div.style, { backgroundImage: `url("${src}")`, backgroundSize: fit, backgroundRepeat: repeat, backgroundPosition: position });
 	} else {
 		// image color multiplies the image, a mask gives that exactly for white icons
 		const url = src ? `url("${src}")` : IMAGE_PLACEHOLDER();
-		Object.assign(div.style, { backgroundColor: css(color), webkitMaskImage: url, maskImage: url, webkitMaskSize: src ? fit : "contain", maskSize: src ? fit : "contain" });
+		Object.assign(div.style, { backgroundColor: css(color), webkitMaskImage: url, maskImage: url, webkitMaskSize: src ? fit : "contain", maskSize: src ? fit : "contain", webkitMaskRepeat: repeat, maskRepeat: repeat, webkitMaskPosition: position, maskPosition: position });
 		if (!src) div.title = `${image} (map it with sim.asset to see the real image)`;
 	}
 	el.appendChild(div);
@@ -547,8 +566,9 @@ function draw_text(el, node, w, h, inner, stroke, gradient, chain, path, screen)
 	const x_align = prop(node, "TextXAlignment"), y_align = prop(node, "TextYAlignment");
 	Object.assign(box.style, {
 		left: `${inner.l}px`, top: `${inner.t}px`, width: `${bw}px`, height: `${bh}px`,
-		justifyContent: { Left: "flex-start", Right: "flex-end" }[x_align] || "center",
-		alignItems: { Top: "flex-start", Bottom: "flex-end" }[y_align] || "center",
+		display: "grid",
+		justifyContent: { Left: "start", Right: "end" }[x_align] || "center",
+		alignContent: { Top: "start", Bottom: "end" }[y_align] || "center",
 	});
 	const span = document.createElement("span");
 	span.textContent = text;
@@ -568,17 +588,27 @@ function draw_text(el, node, w, h, inner, stroke, gradient, chain, path, screen)
 		const sc = css(prop(node, "TextStrokeColor3"), 1 - prop(node, "TextStrokeTransparency"));
 		span.style.textShadow = `-1px -1px 0 ${sc}, 1px -1px 0 ${sc}, -1px 1px 0 ${sc}, 1px 1px 0 ${sc}`;
 	}
-	if (stroke) {
-		const t = prop(stroke, "Thickness");
-		span.style.webkitTextStroke = `${t * 2}px ${css(prop(stroke, "Color"), 1 - prop(stroke, "Transparency"))}`;
-		span.style.paintOrder = "stroke fill";
-	}
+	span.style.gridArea = "1 / 1";
 	if (gradient) {
 		Object.assign(span.style, { background: gradient_css(color, 1 - transparency, gradient), webkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" });
 	}
+	if (stroke) {
+		// uistroke on text sits outside the glyphs: draw a stroked copy underneath
+		const t = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(bw, bh) : prop(stroke, "Thickness");
+		const sc = css(prop(stroke, "Color"), (1 - prop(stroke, "Transparency")) * (1 - transparency));
+		const under = span.cloneNode(true);
+		Object.assign(under.style, { background: "none", color: sc, webkitTextFillColor: sc, webkitTextStroke: `${t * 2}px ${sc}`, strokeLinejoin: "round" });
+		under.setAttribute("aria-hidden", "true");
+		box.appendChild(under);
+	}
 	box.appendChild(span);
 	el.appendChild(box);
-	text_records.push({ node, el, path, size, font, color, alpha: 1 - transparency, chain, placeholder, truncated, scaled, screen, w: bw, h: bh, text });
+	let outline = null;
+	if (stroke) {
+		const t = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(bw, bh) : prop(stroke, "Thickness");
+		outline = { color: prop(stroke, "Color"), width: t, alpha: 1 - prop(stroke, "Transparency") };
+	}
+	text_records.push({ node, el, path, size, font, color, alpha: 1 - transparency, chain, placeholder, truncated, scaled, screen, w: bw, h: bh, text, outline, gradient: !!gradient });
 }
 
 function draw_scrolling(node, el, w, h, chain, path, screen) {
@@ -641,10 +671,14 @@ function run_checks(device, area) {
 			if (fill) under = blend(under, fill.color, fill.alpha);
 		}
 		const fg = blend(under, t.color, t.alpha);
-		const ratio = contrast(fg, under);
+		// a solid outline at least ~1.5px wide is what the letters sit on, so measure against it.
+		// text the same color as its outline is a drop shadow (TitleDown), not something to read
+		const outlined = t.outline && t.outline.alpha > 0.8 && t.outline.width >= 1.5;
+		if (outlined && contrast(t.color, t.outline.color) < 1.2) continue;
+		const ratio = outlined ? contrast(fg, blend(under, t.outline.color, t.outline.alpha)) : contrast(fg, under);
 		const large = t.size >= 24 || (t.size >= 18.66 && t.font.weight >= 700);
 		const need = large ? 3 : 4.5;
-		const label = `"${t.text.slice(0, 24)}${t.text.length > 24 ? "…" : ""}"`;
+		const label = `"${t.text.slice(0, 24)}${t.text.length > 24 ? "…" : ""}"${outlined ? " (vs its outline)" : ""}`;
 		// wcag exempts disabled controls from contrast
 		const disabled = t.chain.some((n) => n.p.Interactable === false);
 		if (ratio < need && !disabled) {

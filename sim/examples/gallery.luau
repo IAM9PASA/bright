@@ -1,4 +1,4 @@
--- every bright component on one inventory screen
+-- inventory screen in the brainrot / cake style, laid out like CakeUi.Main.Inventory
 -- node sim/run.mjs gallery        (add --shot for pngs + design checks)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6,149 +6,226 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ui = require(ReplicatedStorage.Packages.bright)
 local vide = require(ReplicatedStorage.Packages.vide)
 
--- fake asset ids so the sim can show real icons instead of placeholders
-local GEM = "rbxassetid://1001"
-local CLOSE = "rbxassetid://1002"
-sim.asset(GEM, "sim/assets/gem.svg")
-sim.asset(CLOSE, "sim/assets/close.svg")
+local theme = ui.theme
+local icon = theme.asset.icon
 
--- phones get their own proportions: same layout, fewer columns, taller rows. scaling the desktop
--- layout down leaves 8px text and 20px buttons (the sim's checks flag it on the phone presets)
+-- the sim cannot load roblox images, so show local stand-ins for the real ids
+sim.asset(theme.asset.studs, "sim/assets/studs.svg")
+sim.asset(theme.asset.sunburst, "sim/assets/sunburst.svg")
+sim.asset(icon.inventory, "sim/assets/backpack.svg")
+sim.asset(icon.store, "sim/assets/store.svg")
+sim.asset(icon.lucky_block, "sim/assets/lucky.svg")
+sim.asset(icon.cash, "sim/assets/cash.svg")
+sim.asset(icon.brainrot, "sim/assets/cake.svg")
+sim.asset("rbxassetid://9001", "sim/assets/donut.svg")
+sim.asset("rbxassetid://9002", "sim/assets/cup.svg")
+sim.asset("rbxassetid://9003", "sim/assets/shark.svg")
+
+local ITEMS = {
+	{ name = "Cakey Cakini", image = icon.brainrot, value = "$12/s", rarity = "common", rays = Color3.fromHex("0091FF") },
+	{ name = "Donutelli", image = "rbxassetid://9001", value = "$40/s", rarity = "rare", rays = Color3.fromHex("0091FF") },
+	{ name = "Cuppa Brr", image = "rbxassetid://9002", value = "$95/s", rarity = "epic", rays = Color3.fromHex("FF67FF") },
+	{ name = "Sharkalino", image = "rbxassetid://9003", value = "$1.2K/s", rarity = "legendary", rays = Color3.fromHex("FFFF1A") },
+	{ name = "Lucky Block", image = icon.lucky_block, value = "$5K/s", rarity = "rainbow", rays = Color3.fromHex("A6FF01") },
+}
+
+-- phones get a bigger window: the same screen fraction is too small to read or tap there
 local phone = ui.device() == "phone"
 
-local tab = vide.source("items")
+local tab = vide.source("brainrots")
 local selected = vide.source(0)
 
-local function item(i: number)
-	return ui.card {
-		Name = `item_{i}`,
-		LayoutOrder = i,
-		ui.icon {
-			Name = "icon",
-			Image = GEM,
-			ImageColor3 = ui.theme.color.icon,
-			AnchorPoint = Vector2.new(0.5, 0.42),
-			Position = UDim2.fromScale(0.5, 0.42),
-			Size = UDim2.fromScale(0.5, 0.5),
-		},
-		ui.text {
-			Name = "count",
-			Text = `x{i * 3}`,
-			style = "faint",
-			align = "right",
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.fromScale(0.92, 0.95),
-			Size = UDim2.fromScale(0.5, 0.22),
-		},
-		ui.hit {
-			hover = true,
+local function item_at(i: number)
+	return ITEMS[(i - 1) % #ITEMS + 1]
+end
+
+local function current()
+	local i = selected()
+	return if i == 0 then nil else item_at(i)
+end
+
+local screen = sim.screen("CakeUi")
+
+vide.mount(function()
+	local cards = {}
+	for i = 1, 11 do
+		local item = item_at(i)
+		table.insert(cards, ui.item_card {
+			Name = `item_{i}`,
+			LayoutOrder = i,
+			name = item.name,
+			image = item.image,
+			value = item.value,
+			rarity = item.rarity,
+			sunburst = item.rays,
+			selected = function()
+				return selected() == i
+			end,
 			Activated = function()
 				selected(i)
 			end,
-		},
-	}
-end
-
-local screen = sim.screen("inventory")
-
--- reactive props (functions) need a vide scope, same as in a real game
-vide.mount(function()
-	local items = {}
-	for i = 1, 14 do
-		table.insert(items, item(i))
+		})
 	end
 
-	local function tab_button(name: string, text: string, order: number)
-		return ui.tab {
-			Name = name,
-			LayoutOrder = order,
-			text = text,
-			active = function()
-				return tab() == name
-			end,
-			Size = UDim2.fromScale(0.3, 1),
-		}
-	end
-
-	return ui.panel {
-		Name = "main",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = if phone then UDim2.fromScale(0.96, 0.97) else UDim2.fromScale(0.62, 0.72),
-		-- phones already got a bigger layout above, so only tablets / consoles scale up
-		ui.adaptive { phone = 1 },
-		ui.padding(0.03, 0.045),
-
+	return {
+		-- left hud column, like Buttons.Left
 		ui.column {
-			Name = "body",
-			Size = UDim2.fromScale(1, 1),
-			gap = if phone then 0.025 else 0.03,
+			Name = "Buttons",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0.012, 0.5),
+			Size = UDim2.fromScale(0.07, 0.5),
+			gap = 0.03,
+			ui.hud_button { Name = "Store", text = "Store", image = icon.store, notify = true, LayoutOrder = 1, Size = UDim2.fromScale(1, 0.3) },
+			ui.hud_button { Name = "Bag", text = "Bag", image = icon.inventory, LayoutOrder = 2, Size = UDim2.fromScale(1, 0.3) },
+			ui.hud_button { Name = "Lucky", text = "Lucky", image = icon.lucky_block, LayoutOrder = 3, Size = UDim2.fromScale(1, 0.3) },
+		},
 
-			ui.row {
-				Name = "header",
-				LayoutOrder = 1,
-				Size = UDim2.fromScale(1, if phone then 0.16 else 0.1),
-				gap = 0.015,
-				cross = "center",
-				ui.text { Name = "title", Text = "Inventory", style = "title", align = "left", Size = UDim2.fromScale(0.3, 0.8), LayoutOrder = 1 },
-				ui.pill {
-					Name = "search",
-					LayoutOrder = 2,
-					Size = UDim2.fromScale(0.36, 0.8),
-					ui.padding(0.06, 0),
-					-- padding inside the textbox insets the text but keeps the whole pill tappable
-					ui.input { Name = "box", PlaceholderText = "Search items", Size = UDim2.fromScale(1, 1), ui.padding(0, 0.24) },
+		ui.window {
+			Name = "Inventory",
+			title = "Inventory",
+			icon = icon.inventory,
+			palette = "blue",
+			shape = "inventory",
+			close = function() end,
+			Size = if phone then UDim2.fromScale(0.8, 0.98) else UDim2.fromScale(0.62, 0.8),
+			ui.adaptive { phone = 1 },
+
+			-- left 67%: tabs, capacity bar, grid
+			ui.box {
+				Name = "Holder",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.347, 0.566),
+				Size = UDim2.fromScale(0.674, 0.83),
+
+				ui.row {
+					Name = "Tabs",
+					Size = UDim2.fromScale(0.62, if phone then 0.15 else 0.11),
+					Position = UDim2.fromScale(0.03, 0.01),
+					gap = 0.03,
+					ui.tab { Name = "brainrots", text = "Brainrots", LayoutOrder = 1, Size = UDim2.fromScale(0.48, 1), active = function() return tab() == "brainrots" end },
+					ui.tab { Name = "items", text = "Items", LayoutOrder = 2, Size = UDim2.fromScale(0.38, 1), palette = "orange", active = function() return tab() == "items" end },
 				},
-				ui.icon_button { Name = "close", image = CLOSE, LayoutOrder = 3, Size = UDim2.fromScale(1, 1) },
+				ui.progress {
+					Name = "Capacity",
+					value = 11 / 30,
+					text = "11 / 30",
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.fromScale(0.97, 0.025),
+					Size = UDim2.fromScale(0.3, 0.08),
+				},
+				ui.scroll_grid {
+					Name = "List",
+					AnchorPoint = Vector2.new(0.5, 1),
+					Position = UDim2.fromScale(0.5, 1),
+					Size = UDim2.fromScale(0.97, if phone then 0.81 else 0.85),
+					columns = if phone then 3 else 4,
+					ratio = 0.9,
+					gap_x = 0.03,
+					cards,
+				},
 			},
 
-			ui.row {
-				Name = "tabs",
-				LayoutOrder = 2,
-				Size = UDim2.fromScale(if phone then 0.6 else 0.5, if phone then 0.15 else 0.085),
-				gap = 0.01,
-				tab_button("items", "Items", 1),
-				tab_button("pets", "Pets", 2),
-				tab_button("gear", "Gear", 3),
-			},
+			-- right side: preview of the selected item + actions
+			ui.card {
+				Name = "Side",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.841, 0.568),
+				Size = UDim2.fromScale(0.284, 0.805),
 
-			ui.scroll_grid {
-				Name = "list",
-				LayoutOrder = 3,
-				Size = UDim2.fromScale(1, if phone then 0.41 else 0.59),
-				columns = if phone then 5 else 6,
-				items,
-			},
+				ui.card {
+					Name = "Main",
+					tile = true,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.271),
+					Size = UDim2.fromScale(0.832, 0.442),
+					vide.create "CanvasGroup" {
+						Name = "Rays",
+						BackgroundTransparency = 1,
+						Size = UDim2.fromScale(1, 1),
+						ZIndex = -1,
+						ui.sunburst {
+							ImageColor3 = function()
+								local item = current()
+								return if item then item.rays else Color3.fromHex("0091FF")
+							end,
+							Size = UDim2.fromScale(1.4, 1.4),
+						},
+					},
+					ui.icon {
+						Name = "Icon",
+						Image = function()
+							local item = current()
+							return if item then item.image else icon.lucky_block
+						end,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromScale(0.5, 0.52),
+						Size = UDim2.fromScale(0.68, 0.68),
+					},
+					ui.title {
+						Name = "Title",
+						Text = function()
+							local item = current()
+							return if item then item.name else "Pick one!"
+						end,
+						align = "center",
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromScale(0.5, 0.11),
+						Size = UDim2.fromScale(0.92, 0.15),
+					},
+					ui.text {
+						Name = "Rarity",
+						Text = function()
+							local item = current()
+							if not item then return "" end
+							return string.upper(if item.rarity == "rainbow" then "OP" else item.rarity)
+						end,
+						style = "legendary",
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromScale(0.5, 0.91),
+						Size = UDim2.fromScale(0.8, 0.13),
+					},
+				},
 
-			ui.row {
-				Name = "footer",
-				LayoutOrder = 4,
-				Size = UDim2.fromScale(1, if phone then 0.16 else 0.1),
-				gap = 0.015,
-				align = "end",
-				ui.button { Name = "upgrade", text = "Upgrade", style = "ghost", disabled = true, LayoutOrder = 1, Size = UDim2.fromScale(0.18, 1) },
-				ui.button { Name = "sell", text = "Sell", LayoutOrder = 2, Size = UDim2.fromScale(0.18, 1) },
+				ui.text {
+					Name = "Cash",
+					Text = function()
+						local item = current()
+						return if item then item.value else "$0/s"
+					end,
+					style = "cash",
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.57),
+					Size = UDim2.fromScale(0.8, 0.1),
+				},
 				ui.button {
-					Name = "equip",
+					Name = "Equip",
 					text = "Equip",
-					style = "primary",
-					LayoutOrder = 3,
-					Size = UDim2.fromScale(0.22, 1),
+					palette = "green",
 					disabled = function()
 						return selected() == 0
 					end,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, if phone then 0.71 else 0.725),
+					Size = UDim2.fromScale(0.9, if phone then 0.17 else 0.14),
+				},
+				ui.button {
+					Name = "Delete",
+					text = "Delete",
+					palette = "red",
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, if phone then 0.895 else 0.9),
+					Size = UDim2.fromScale(0.9, if phone then 0.17 else 0.14),
 				},
 			},
 		},
 	}
 end, screen)
 
-local panel = screen.main
+local window = screen.Inventory
 sim.snapshot("default")
 
-sim.click(panel.body.list.item_3)
-sim.hover(panel.body.list.item_2)
-sim.press(panel.body.list.item_5)
-sim.hover(panel.body.footer.equip)
-tab("pets")
-sim.snapshot("selected + hover + pets tab")
+sim.click(window.Holder.List.item_4)
+sim.hover(window.Side.Equip)
+sim.press(window.Holder.List.item_2)
+tab("items")
+sim.snapshot("selected + hover + press")
