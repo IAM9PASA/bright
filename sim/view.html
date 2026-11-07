@@ -693,7 +693,7 @@ function run_checks(device, area) {
 		// a solid outline at least ~1.5px wide is what the letters sit on, so measure against it.
 		// text the same color as its outline is a drop shadow (TitleDown), not something to read
 		const outlined = t.outline && t.outline.alpha > 0.8 && t.outline.width >= 1.5;
-		if (outlined && contrast(t.color, t.outline.color) < 1.2) continue;
+		if (t.outline && t.outline.alpha > 0.5 && contrast(t.color, t.outline.color) < 1.2) continue;
 		const ratio = outlined ? contrast(fg, blend(under, t.outline.color, t.outline.alpha)) : contrast(fg, under);
 		const large = t.size >= 24 || (t.size >= 18.66 && t.font.weight >= 700);
 		const need = large ? 3 : 4.5;

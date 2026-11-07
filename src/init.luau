@@ -31,6 +31,7 @@
 -- ui.input { PlaceholderText }               inset textbox
 -- ui.toggle { on }                           on/off switch, on = bool or vide source (click flips a source)
 -- ui.hud_button { text, image, notify }     square side button with caption
+-- ui.hud_column { side = "left", cell = 0.28, gap = 0.03 }   screen-edge column the hud buttons stack in
 -- ui.hit { hover = true, ... }                invisible full-size "button", hover pops the parent
 --
 -- CONTENT
@@ -807,6 +808,29 @@ local function build(theme)
 		local button = create "TextButton" (props)
 		bind_press(button, button, nil, nil)
 		return button
+	end
+
+	-- left (or right) screen edge, centered vertically. each button child gets an even share of the
+	-- height (cell) and stacks by LayoutOrder, so side buttons line up on every screen
+	function ui.hud_column(props)
+		local side = take(props, "side") or "left"
+		local cell = take(props, "cell") or 0.28
+		local gap = take(props, "gap") or 0.03
+		local right = side == "right"
+
+		for key, child in props do
+			if type(key) == "number" and typeof(child) == "Instance" and child:IsA("GuiObject") then
+				child.Size = UDim2.fromScale(1, cell)
+			end
+		end
+		defaults(props, {
+			Name = "Hud",
+			AnchorPoint = Vector2.new(if right then 1 else 0, 0.5),
+			Position = UDim2.fromScale(if right then 0.988 else 0.012, 0.5),
+			Size = UDim2.fromScale(0.07, 0.56),
+		})
+		table.insert(props, ui.list_layout { direction = "column", gap = gap, align = "center", cross = "center" })
+		return ui.box(props)
 	end
 
 	-- HEADER -------------------------
