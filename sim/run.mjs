@@ -7,6 +7,7 @@
 //   node sim/run.mjs --shot               also save png screenshots + run design checks (needs playwright)
 //   node sim/run.mjs --serve              local server on :5173 that rebuilds + reloads on save
 //   node sim/run.mjs --device phone,desktop --shot
+//   node sim/run.mjs --tests              run sim/tests (lint fixtures, behaviour asserts), exit 1 on failure
 //   node sim/run.mjs --strict             exit 1 on any sizing-rule fail (RULES.md), for ci
 //
 // needs a `luau` binary: `rokit install` (rokit.toml) or set LUAU=/path/to/luau
@@ -21,7 +22,8 @@ import { fileURLToPath } from "node:url";
 const SIM = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SIM);
 const OUT = path.join(SIM, "out");
-const EXAMPLES = path.join(SIM, "examples");
+// --tests runs the assertion scripts in sim/tests instead of the examples
+const EXAMPLES = path.join(SIM, process.argv.includes("--tests") ? "tests" : "examples");
 const VIDE_VERSION = "0.3.1";
 
 // sizes are roblox screen points. safe = notch / home bar insets. each example runs once per device

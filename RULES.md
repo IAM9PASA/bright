@@ -72,7 +72,8 @@ Measured in the sim: padding where the sides and top differ by more than 1.6x is
 | `press_scale` / `pop_scale` for hover, press and pop animations (bright adds these) | Scale far outside 0.5–2 to fix a layout |
 
 - `UIScale` scales a whole tree around its anchor point and keeps everything in scale. Use it to grow UI on phones and TVs, never to patch one element.
-- The linter warns when two layout scales stack. The animation scales above are ignored.
+- The linter warns when two layout scales stack. The animation scales above are ignored for that check.
+- Roblox applies only **one** `UIScale` per object. Two on the same object (say `ui.adaptive()` and a pop animation on one window) is a fail, `one scale per instance`, whatever their names. Put the second scale on a wrapper frame (`ui.presence` does this for you).
 
 ## Allowed exceptions
 
@@ -82,5 +83,5 @@ Measured in the sim: padding where the sides and top differ by more than 1.6x is
 
 ## Rule names in reports
 
-`scale size`, `scale position`, `scale padding`, `scaled stroke`, `scaled text`, `one ui scale` (static, from `ui.lint`).
+`scale size`, `scale position`, `scale padding`, `scaled stroke`, `scaled text`, `one ui scale`, `one scale per instance` (static, from `ui.lint`).
 `even padding`, `thin stroke`, `text size` (measured per device in `sim/`).
