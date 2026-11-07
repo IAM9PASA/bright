@@ -36,6 +36,9 @@
 -- CONTENT
 -- ui.item_card { name, image, value, rarity, sunburst, selected }
 -- ui.sunburst { ImageColor3 } / ui.studs(tile, colors) / ui.progress { value, text } / ui.icon { Image }
+-- ui.hex { color }                           pointy-top hexagon (3 rotated bands, or theme.asset.hex image)
+-- ui.hex_stack(palette, props?)              border + rim + raised face hex, palette = name or source of one
+-- ui.hex_grid { radius, cell = function(q, r) -> Instance, gap = 0.94 }   axial hex grid
 --
 -- LAYOUT
 -- ui.box / ui.row / ui.column { gap = 0.02, align = "center", cross = "center", fill = true }
@@ -1205,6 +1208,123 @@ local function build(theme)
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromScale(0.9, 0.7),
 			})
+		end
+		return create "Frame" (props)
+	end
+
+	-- HEX -------------------------
+
+	local SQRT3 = math.sqrt(3)
+
+	-- pointy-top hexagon: a w x h/2 band rotated 0 / 60 / -60 inside a box of aspect sqrt(3)/2 covers
+	-- exactly a hex. a style can set theme.asset.hex (white hex image) to get one image with a gradient
+	-- instead. color = Color3 or source
+	function ui.hex(props)
+		local color = take(props, "color") or theme.surface.color
+		local transparency = take(props, "transparency") or 0
+		local gradient = take(props, "gradient")
+
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+
+		defaults(props, { BackgroundTransparency = 1, BorderSizePixel = 0 })
+		table.insert(props, create "UIAspectRatioConstraint" { AspectRatio = SQRT3 / 2 })
+		if theme.asset.hex then
+			table.insert(props, create "ImageLabel" {
+				Name = "Shape",
+				Image = theme.asset.hex,
+				ImageColor3 = color,
+				ImageTransparency = transparency,
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				gradient and ui.gradient(gradient) or nil,
+			})
+		else
+			for _, angle in { 0, 60, -60 } do
+				table.insert(props, create "Frame" {
+					Name = "Band",
+					BackgroundColor3 = color,
+					BackgroundTransparency = transparency,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromScale(1, 0.5),
+					Rotation = angle,
+				})
+			end
+		end
+		-- content goes over the shape
+		table.insert(props, create "Frame" { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, children })
+		return create "Frame" (props)
+	end
+
+	-- candy bevel as hexes: dark border, base rim peeking out below, raised face on top.
+	-- the three colors are worked out once per palette change, not once per band
+	function ui.hex_stack(palette, props)
+		props = props or {}
+		local colors = map(palette, function(name)
+			local p = get_palette(name)
+			return { border = p.stroke, rim = p.base, face = p.face[1]:Lerp(p.face[2], 0.55) }
+		end)
+		local derived = if type(colors) == "function" then vide.derive(colors) else nil
+		local function color_of(key)
+			if derived then return function() return derived()[key] end end
+			return colors[key]
+		end
+
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+		defaults(props, { Name = "HexStack", Size = UDim2.fromScale(1, 1) })
+		table.insert(props, ui.hex { Name = "Border", color = color_of("border"), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1) })
+		table.insert(props, ui.hex { Name = "Rim", color = color_of("rim"), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53), Size = UDim2.fromScale(0.88, 0.88) })
+		table.insert(props, ui.hex {
+			Name = "Face",
+			color = color_of("face"),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.47),
+			Size = UDim2.fromScale(0.84, 0.84),
+			ZIndex = 2,
+			children,
+		})
+		return ui.hex(props)
+	end
+
+	-- axial coordinates (q, r), pointy-top. the box keeps the aspect of the whole grid, cells sit at
+	-- `gap` of their slot so the borders don't touch. cell(q, r) returns an instance sized 1 x 1
+	function ui.hex_grid(props)
+		local radius = take(props, "radius") or 2
+		local cell = take(props, "cell")
+		local gap = take(props, "gap") or 0.94
+		assert(type(cell) == "function", "ui.hex_grid: cell must be a function(q, r)")
+
+		-- in units of the hex circumradius
+		local width = SQRT3 * (2 * radius + 1)
+		local height = 1.5 * 2 * radius + 2
+
+		defaults(props, { Name = "HexGrid", BackgroundTransparency = 1, BorderSizePixel = 0 })
+		table.insert(props, create "UIAspectRatioConstraint" { AspectRatio = width / height })
+		for q = -radius, radius do
+			for r = math.max(-radius, -q - radius), math.min(radius, -q + radius) do
+				local slot = create "Frame" {
+					Name = `hex_{q}_{r}`,
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5 + SQRT3 * (q + r / 2) / width, 0.5 + 1.5 * r / height),
+					Size = UDim2.fromScale(SQRT3 / width * gap, 2 / height * gap),
+					cell(q, r),
+				}
+				table.insert(props, slot)
+			end
 		end
 		return create "Frame" (props)
 	end

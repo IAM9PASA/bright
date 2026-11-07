@@ -106,6 +106,9 @@ return {
 	asset = {
 		studs = "rbxassetid://10509779001",
 		sunburst = "rbxassetid://135083906498742",
+		-- optional white pointy-top hexagon image: ui.hex then draws one image (with a gradient face)
+		-- instead of three rotated frames. nil = frames
+		hex = nil,
 		glow = "rbxassetid://85606468393354",
 		icon = {
 			store = "rbxassetid://114395480108146",
