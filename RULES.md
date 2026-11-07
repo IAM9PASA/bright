@@ -51,6 +51,7 @@ Measured in the sim: padding where the sides and top differ by more than 1.6x is
 | `BorderSizePixel = 0`, outline with `UIStroke` | `BorderSizePixel` (px) |
 
 - A scaled stroke grows with its element, so big things take small numbers. The tokens live in `theme.stroke`: window 0.01, card 0.03, header 0.07, button 0.07, label 0.1, title 0.12. On a 1080p screen they all land between about 3px and 8px.
+- Stud texture `TileSize` is scale of the studded surface. For round studs, set tile Y = tile X × (width / height of the surface). Use the `theme.studs` tokens for headers and buttons.
 - Measured in the sim: a border stroke under 1px, or a text outline under 0.75px, on a device is flagged as **thin stroke**. Raise the token instead of adding px.
 
 ## 4. Text: TextScaled, size the box

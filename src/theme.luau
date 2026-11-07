@@ -100,7 +100,7 @@ return {
 		button = UDim2.fromScale(0.08, 0.325),
 		square = UDim2.fromScale(0.25, 0.25),
 		header = UDim2.fromScale(0.022, 0.315),
-		popup_header = UDim2.fromScale(0.05, 0.315),
+		popup_header = UDim2.fromScale(0.034, 0.315),
 		card = UDim2.fromScale(0.022, 0.12),
 	},
 

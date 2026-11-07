@@ -20,6 +20,7 @@
 -- ui.icon_button { image, palette }         square candy button with an icon
 -- ui.tab { text, active, palette }          candy button that goes grey when not active (active = bool or source)
 -- ui.input { PlaceholderText }              dark inset textbox
+-- ui.toggle { on }                          on/off switch, on = bool or vide source (click flips a source)
 -- ui.hud_button { text, image, notify }    square side button with caption (store, inventory...)
 -- ui.hit { hover = true, ... }               invisible full-size "button", hover pops the parent
 --
@@ -36,10 +37,12 @@
 -- ui.scroll_grid { columns = 4, ratio = 1, gap_x = 0.027, gap_y }   cells sized from the width
 -- ui.scroll_list { gap = 0.04 }              vertical list with edge spacers
 -- ui.square(ratio?) / ui.padding(x, y?)      constraints, padding is scale per axis
+-- ui.ratio(width / height)                   height follows the width (rows inside scroll_list)
 -- ui.pad(space, aspect?)                     even padding: space = "sm" | number, share of the short side,
 --                                            aspect = width / height of the padded frame
 -- ui.lint(root)                              list rule breaks (offsets, px strokes, unscaled text), see RULES.md
 -- ui.gradient(colors, rotation?)             UIGradient from a color list, 90 = top to bottom
+-- ui.sequence(colors)                        ColorSequence from a color list
 --
 -- SCREEN
 -- ui.device()                                "phone" | "tablet" | "desktop" | "console"
@@ -116,6 +119,8 @@ local function sequence(colors: { Color3 }): ColorSequence
 	return ColorSequence.new(keypoints)
 end
 
+ui.sequence = sequence
+
 local function get_palette(name)
 	return theme.palette[name] or theme.palette.blue
 end
@@ -162,6 +167,15 @@ end
 
 function ui.square(ratio: number?)
 	return create "UIAspectRatioConstraint" { AspectRatio = ratio or 1 }
+end
+
+-- height from width only. inside a scrolling frame Y scale follows the growing canvas, so rows use this
+function ui.ratio(ratio: number)
+	return create "UIAspectRatioConstraint" {
+		AspectRatio = ratio,
+		AspectType = Enum.AspectType.ScaleWithParentSize,
+		DominantAxis = Enum.DominantAxis.Width,
+	}
 end
 
 -- scale of the parent on each axis, so give y separately for wide boxes
@@ -522,6 +536,36 @@ function ui.input(props)
 	return create "TextBox" (props)
 end
 
+-- dark track with a candy knob that slides right and turns green when on
+function ui.toggle(props)
+	local on = take(props, "on")
+	local is_on = function()
+		if type(on) == "function" then return on() end
+		return on
+	end
+
+	defaults(props, {
+		Size = UDim2.fromScale(0.3, 0.12),
+		BackgroundColor3 = theme.surface.color,
+		BackgroundTransparency = 0.43,
+		BorderSizePixel = 0,
+	})
+	table.insert(props, stroke(theme.surface.stroke, 0.12))
+	table.insert(props, ui.button {
+		Name = "Bool",
+		text = function() return if is_on() then "ON" else "OFF" end,
+		palette = function() return if is_on() then "green" else "red" end,
+		studs = theme.studs.square,
+		AnchorPoint = function() return Vector2.new(if is_on() then 1 else 0, 0.5) end,
+		Position = function() return UDim2.fromScale(if is_on() then 1 else 0, 0.5) end,
+		Size = UDim2.fromScale(0.55, 1.15),
+		Activated = function()
+			if type(on) == "function" then on(not on()) end
+		end,
+	})
+	return create "Frame" (props)
+end
+
 -- invisible full-size button. hover = true pops the parent like a candy button
 function ui.hit(props)
 	props = props or {}
@@ -667,15 +711,22 @@ function ui.window(props)
 		Size = UDim2.fromScale(0.6, 0.7),
 	})
 	table.insert(props, stroke(theme.surface.stroke, theme.stroke.window, theme.surface.stroke_transparency))
-	table.insert(props, ui.square(theme.window[shape] or theme.window.standard))
+	local aspect = theme.window[shape] or theme.window.standard
+	local header_height = if shape == "popup" then 0.184 else 0.134
+	-- round studs: the stud layer is 0.99 x 0.91 of a header that is (aspect / header_height) wide,
+	-- so tile X = tile Y * layer height / layer width
+	local tile_y = theme.studs.header.Y.Scale
+	local tile_x = tile_y * 0.91 / (0.99 * aspect / header_height)
+
+	table.insert(props, ui.square(aspect))
 	table.insert(props, ui.header {
 		title = title,
 		icon = icon,
 		palette = palette,
 		close = close,
-		studs = if shape == "popup" then theme.studs.popup_header else theme.studs.header,
-		Size = UDim2.fromScale(1, if shape == "popup" then 0.184 else 0.134),
-		Position = UDim2.fromScale(0.5, if shape == "popup" then 0.092 else 0.067),
+		studs = UDim2.fromScale(tile_x, tile_y),
+		Size = UDim2.fromScale(1, header_height),
+		Position = UDim2.fromScale(0.5, header_height / 2),
 	})
 	return create "Frame" (props)
 end
@@ -872,8 +923,9 @@ function ui.scroll_grid(props)
 			DominantAxis = Enum.DominantAxis.Width,
 		},
 	})
-	-- strokes are drawn outside each cell, padding keeps the edge ones from being clipped
-	table.insert(props, ui.padding(0.012, 0.012))
+	-- strokes are drawn outside each cell, padding keeps the edge ones from being clipped.
+	-- y is a bit bigger than x so it looks even on the usual 1.4 - 2:1 grid areas
+	table.insert(props, ui.padding(0.01, 0.015))
 	return create "ScrollingFrame" (props)
 end
 

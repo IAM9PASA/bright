@@ -181,6 +181,8 @@ function build_all() {
 	const modules = [
 		...collect_modules(path.join(ROOT, "src"), "ReplicatedStorage/Packages/bright"),
 		...collect_modules(find_vide(), "ReplicatedStorage/Packages/vide"),
+		// helpers every example can require: ReplicatedStorage.Shared.<name>
+		...(fs.existsSync(path.join(SIM, "shared")) ? collect_modules(path.join(SIM, "shared"), "ReplicatedStorage/Shared") : []),
 	];
 	const examples = fs.readdirSync(EXAMPLES).filter((f) => /\.luau?$/.test(f))
 		.filter((f) => names.length === 0 || names.includes(f.replace(/\.luau?$/, "")))
@@ -243,7 +245,7 @@ function serve() {
 			for (const res of clients) res.write("data: reload\n\n");
 		}, 120);
 	};
-	for (const dir of [path.join(ROOT, "src"), EXAMPLES]) fs.watch(dir, { recursive: true }, rebuild);
+	for (const dir of [path.join(ROOT, "src"), EXAMPLES, path.join(SIM, "shared")].filter((d) => fs.existsSync(d))) fs.watch(dir, { recursive: true }, rebuild);
 	fs.watch(path.join(SIM, "view.html"), rebuild);
 	fs.watch(path.join(SIM, "roblox.luau"), rebuild);
 

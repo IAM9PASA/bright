@@ -53,7 +53,18 @@ node sim/run.mjs gallery --serve     # http://localhost:5173, rebuilds + reloads
 node sim/run.mjs --shot              # pngs per device + design checks in the terminal (needs playwright)
 ```
 
-Examples live in `sim/examples/`. They are normal client code plus a `sim` global:
+Examples live in `sim/examples/`, one per style:
+
+| Example | Style | Shows |
+| --- | --- | --- |
+| `gallery` | blue inventory | item cards, preview panel, tabs, HUD buttons, progress |
+| `store` | amber large window | pack cards (blue / pink / green), passes, sale price, robux buttons |
+| `upgrades` | gold | rows sized with `ui.ratio`, level bars, buy and maxed (grey) states |
+| `daily` | pink | 7-day grid, claimed / today / locked cells, reactive claim button |
+| `popups` | red and green popups | dimmed backdrop, confirm and reward, switching between scenes |
+| `themes` | same window in 4 palettes | only `palette` changes, plus `ui.toggle` |
+
+`sim/shared/stand_ins.luau` maps the asset ids to local preview drawings. They are normal client code plus a `sim` global:
 
 ```lua
 local screen = sim.screen("shop")            -- a ScreenGui in PlayerGui
