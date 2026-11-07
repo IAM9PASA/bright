@@ -99,6 +99,92 @@ local text_alignments = {
 local PRESS_SCALE, POP_SCALE = "press_scale", "pop_scale"
 
 
+-- PROPS -------------------------
+-- types for editor autocomplete and typo checks (a misspelt `palete` is flagged). children go in the
+-- array part; roblox properties not listed here still work, these change nothing at runtime
+
+type Source<T> = () -> T
+type Maybe<T> = T | Source<T>
+
+export type GuiProps = {
+	Name: string?,
+	Parent: Instance?,
+	Size: Maybe<UDim2>?,
+	Position: Maybe<UDim2>?,
+	AnchorPoint: Maybe<Vector2>?,
+	LayoutOrder: number?,
+	ZIndex: number?,
+	Visible: Maybe<boolean>?,
+	Rotation: Maybe<number>?,
+	[number]: any,
+}
+
+export type WindowProps = GuiProps & {
+	title: Maybe<string>?,
+	icon: string?,
+	palette: string?,
+	shape: ("standard" | "inventory" | "large" | "popup")?,
+	close: (boolean | () -> ())?,
+	open: Source<boolean>?,
+}
+
+export type ButtonProps = GuiProps & {
+	text: Maybe<string>?,
+	image: string?,
+	palette: Maybe<string>?,
+	amount: Maybe<string>?,
+	disabled: Maybe<boolean>?,
+	locked: Maybe<boolean>?,
+	studs: UDim2?,
+	Activated: (() -> ())?,
+}
+
+export type TextProps = GuiProps & {
+	Text: Maybe<string>?,
+	style: ("dim" | "cash" | "legendary" | "epic" | "rare" | "common" | "gems" | "item" | "rainbow")?,
+	align: ("left" | "center" | "right")?,
+	stroke: Color3?,
+}
+
+export type TitleProps = TextProps & { color: Color3? }
+
+export type ItemCardProps = GuiProps & {
+	name: Maybe<string>?,
+	image: Maybe<string>?,
+	value: Maybe<string>?,
+	rarity: string?,
+	sunburst: Color3?,
+	selected: Maybe<boolean>?,
+	Activated: (() -> ())?,
+}
+
+export type ScrollGridProps = GuiProps & {
+	columns: number?,
+	ratio: number?,
+	gap_x: number?,
+	gap_y: number?,
+	cell: number?,
+}
+
+export type PresenceProps = GuiProps & {
+	open: Source<boolean>,
+	scale_from: number?,
+	fade: boolean?,
+}
+
+export type CounterProps = TextProps & {
+	value: Source<number>,
+	format: ((number) -> string)?,
+	time: number?,
+}
+
+export type HexGridProps = GuiProps & {
+	radius: number?,
+	cell: (q: number, r: number) -> Instance,
+	gap: number?,
+}
+
+
 -- FUNCTIONS -------------------------
 
 local function defaults(props, values)
@@ -337,7 +423,7 @@ local function build(theme)
 		return theme.text_gradient[name]
 	end
 
-	function ui.text(props)
+	function ui.text(props: TextProps | string)
 		if type(props) == "string" then
 			props = { Text = props }
 		end
@@ -364,7 +450,7 @@ local function build(theme)
 	end
 
 	-- title font. styles with a drop edge put a dark copy a little lower
-	function ui.title(props)
+	function ui.title(props: TitleProps)
 		local text = cased(take(props, "Text"))
 		local align = take(props, "align") or "left"
 		local outline = take(props, "stroke") or theme.color.outline
@@ -413,7 +499,7 @@ local function build(theme)
 	ui.thousands = thousands
 
 	-- rolls instead of jumping: a NumberValue tweens to each new value (quart out) and the label follows
-	function ui.counter(props)
+	function ui.counter(props: CounterProps)
 		local value = take(props, "value")
 		local format = take(props, "format") or thousands
 		local time = take(props, "time") or 0.6
@@ -552,7 +638,7 @@ local function build(theme)
 
 	-- one api, four looks: candy (rim + glossy face), flat (one fill), outline (see-through + edge),
 	-- glow (flat + halo). palette and disabled can be vide sources
-	function ui.button(props)
+	function ui.button(props: ButtonProps)
 		local text = cased(take(props, "text"))
 		local amount = take(props, "amount")
 		local disabled = take(props, "disabled")
@@ -973,7 +1059,7 @@ local function build(theme)
 	-- open / close transition. a spring drives one UIScale on the outer frame; children fade inside a
 	-- CanvasGroup only while moving, then sit in a plain frame so idle animations don't re-render the
 	-- canvas texture every frame. closed = invisible = no input, no cost
-	function ui.presence(props)
+	function ui.presence(props: PresenceProps)
 		local open = take(props, "open")
 		local scale_from = take(props, "scale_from") or 0.9
 		local fade = take(props, "fade")
@@ -1033,7 +1119,7 @@ local function build(theme)
 	end
 
 	-- shape picks the reference window proportions, the window keeps them on every screen
-	function ui.window(props)
+	function ui.window(props: WindowProps)
 		local open = take(props, "open")
 		if open ~= nil then
 			-- the presence takes the window's place and box, the window fills it
@@ -1120,7 +1206,7 @@ local function build(theme)
 	end
 
 	-- a grid cell: icon, name colored by rarity, value top right. rays behind it, or a rarity stripe
-	function ui.item_card(props)
+	function ui.item_card(props: ItemCardProps)
 		local name = take(props, "name")
 		local image = take(props, "image")
 		local value = take(props, "value")
@@ -1339,7 +1425,7 @@ local function build(theme)
 
 	-- axial coordinates (q, r), pointy-top. the box keeps the aspect of the whole grid, cells sit at
 	-- `gap` of their slot so the borders don't touch. cell(q, r) returns an instance sized 1 x 1
-	function ui.hex_grid(props)
+	function ui.hex_grid(props: HexGridProps)
 		local radius = take(props, "radius") or 2
 		local cell = take(props, "cell")
 		local gap = take(props, "gap") or 0.94
@@ -1472,7 +1558,7 @@ local function build(theme)
 
 	-- inside a scrolling frame scale follows the canvas, and an automatic canvas grows with its content,
 	-- so cells are sized from the width only. ratio = cell width / height
-	function ui.scroll_grid(props)
+	function ui.scroll_grid(props: ScrollGridProps)
 		local columns = take(props, "columns") or 4
 		local ratio = take(props, "ratio") or 1
 		local gap_x = take(props, "gap_x") or 0.027
