@@ -166,7 +166,8 @@ function run_once(luau, modules, example, name, device_name, print_logs) {
 	const stdout = result.stdout ?? "";
 	const at = stdout.lastIndexOf(MARK);
 	const logs = (at >= 0 ? stdout.slice(0, at) : stdout).trimEnd();
-	if (logs && print_logs) console.log(logs.split("\n").map((l) => `  [${name}] ${l}`).join("\n"));
+	// logs once per example, and always when a run fails so its prints explain the error
+	if (logs && (print_logs || result.status !== 0 || at < 0)) console.log(logs.split("\n").map((l) => `  [${name}] ${l}`).join("\n"));
 	if (result.status !== 0 || at < 0) {
 		console.error(`\n[sim] ${name} failed (${device_name}):\n${(result.stderr || "").trim() || "no output"}\n`);
 		return null;

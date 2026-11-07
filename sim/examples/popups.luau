@@ -1,4 +1,5 @@
--- style: small popups over a dimmed screen. red "delete?" confirm, green "you got" reward
+-- style: small popups over a dimmed screen. red "delete?" confirm, green "you got" reward.
+-- each window has `open = source`, so it springs in and out (ui.presence) instead of popping
 -- node sim/run.mjs popups
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -32,7 +33,7 @@ local function confirm()
 		palette = "red",
 		shape = "popup",
 		close = function() open(nil) end,
-		Visible = function() return open() == "confirm" end,
+		open = function() return open() == "confirm" end,
 		Size = UDim2.fromScale(0.42, 0.5),
 		ZIndex = 10,
 		ui.adaptive { phone = 1.35 },
@@ -61,7 +62,7 @@ local function reward()
 		icon = ids.gift,
 		palette = "green",
 		shape = "popup",
-		Visible = function() return open() == "reward" end,
+		open = function() return open() == "reward" end,
 		Size = UDim2.fromScale(0.42, 0.5),
 		ZIndex = 10,
 		ui.adaptive { phone = 1.35 },
@@ -87,8 +88,24 @@ vide.mount(function()
 	return { dim(), confirm(), reward() }
 end, screen)
 
+local function find(name)
+	return screen:FindFirstChild(name, true)
+end
+
 sim.snapshot("confirm delete")
-sim.hover(screen.Confirmation.Yes)
+sim.hover(find("Yes"))
 sim.snapshot("hover delete")
+
+-- switch popups: the confirm springs out while the reward springs in
 open("reward")
+sim.step(0.06)
+sim.snapshot("switching (60ms in)")
+sim.step(1)
+assert(screen.Confirmation.Visible == false, "closed presence should hide itself")
+assert(screen.Reward.Fade:FindFirstChild("Content") == nil and screen.Reward.Still:FindFirstChild("Content"), "settled content should leave the canvas")
 sim.snapshot("reward")
+
+open(nil)
+sim.step(0.08)
+assert(screen.Reward.Fade:FindFirstChild("Content"), "closing content should be back in the canvas")
+sim.snapshot("closing (80ms in)")

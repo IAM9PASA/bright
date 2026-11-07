@@ -9,7 +9,9 @@
 -- ui.extend(base, { surface = { corner = UDim.new(0.1, 0) } })   make your own style from another one
 --
 -- WINDOWS
--- ui.window { title, icon, palette, shape = "standard" | "inventory" | "large" | "popup", close }
+-- ui.window { title, icon, palette, shape = "standard" | "inventory" | "large" | "popup", close, open }
+--   open = source(bool) wraps the window in ui.presence (spring scale + fade in and out)
+-- ui.presence { open, scale_from = 0.9, fade = true }   open / close transition for any children
 -- ui.header { title, icon, palette, close }  the header alone (bar / plain / banner, from the style)
 -- ui.card { tile = false, selected }         surface card, tile = inset
 -- ui.panel                                    plain surface with the window outline
@@ -872,8 +874,77 @@ local function build(theme)
 		return create "Frame" (props)
 	end
 
+	-- open / close transition. a spring drives one UIScale on the outer frame; children fade inside a
+	-- CanvasGroup only while moving, then sit in a plain frame so idle animations don't re-render the
+	-- canvas texture every frame. closed = invisible = no input, no cost
+	function ui.presence(props)
+		local open = take(props, "open")
+		local scale_from = take(props, "scale_from") or 0.9
+		local fade = take(props, "fade")
+		if fade == nil then fade = true end
+		assert(type(open) == "function", "ui.presence: open must be a vide source")
+
+		local progress = vide.spring(function() return if open() then 1 else 0 end, 0.3, 0.75)
+
+		-- everything in the array part becomes content
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+
+		local content = create "Frame" { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), children }
+		local canvas = create "CanvasGroup" {
+			Name = "Fade",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			GroupTransparency = function() return 1 - math.clamp(progress(), 0, 1) end,
+		}
+		local still = create "Frame" { Name = "Still", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }
+
+		vide.effect(function()
+			local settled = open() and math.abs(progress() - 1) < 0.003
+			local home = if settled or not fade then still else canvas
+			if content.Parent ~= home then content.Parent = home end
+		end)
+
+		defaults(props, {
+			Name = "Presence",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Visible = function() return open() or progress() > 0.01 end,
+		})
+		table.insert(props, create "UIScale" {
+			Name = "presence_scale",
+			Scale = function() return scale_from + (1 - scale_from) * progress() end,
+		})
+		table.insert(props, canvas)
+		table.insert(props, still)
+		return create "Frame" (props)
+	end
+
 	-- shape picks the reference window proportions, the window keeps them on every screen
 	function ui.window(props)
+		local open = take(props, "open")
+		if open ~= nil then
+			-- the presence takes the window's place and box, the window fills it
+			local outer = {
+				open = open,
+				Name = take(props, "Name") or "Window",
+				AnchorPoint = take(props, "AnchorPoint") or Vector2.new(0.5, 0.5),
+				Position = take(props, "Position") or UDim2.fromScale(0.5, 0.5),
+				Size = take(props, "Size") or UDim2.fromScale(0.6, 0.7),
+				ZIndex = take(props, "ZIndex"),
+				LayoutOrder = take(props, "LayoutOrder"),
+				Parent = take(props, "Parent"),
+			}
+			props.Name = "Window"
+			props.Size = UDim2.fromScale(1, 1)
+			table.insert(outer, ui.window(props))
+			return ui.presence(outer)
+		end
 		local title = take(props, "title")
 		local icon = take(props, "icon")
 		local palette = take(props, "palette") or theme.accent

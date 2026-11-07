@@ -8,7 +8,7 @@
 -- VARIABLES -------------------------
 
 -- UIScales bright uses for hover / press / pop animation, they are not layout scaling
-local ANIMATION_SCALES = { press_scale = true, pop_scale = true }
+local ANIMATION_SCALES = { press_scale = true, pop_scale = true, presence_scale = true }
 
 local TEXT_CLASSES = { "TextLabel", "TextButton", "TextBox" }
 

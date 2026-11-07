@@ -156,9 +156,28 @@ function Vector2_methods.Lerp(a, b, t) return Vector2.new(lerp(a.X, b.X, t), ler
 Vector2.zero = Vector2.new(0, 0)
 Vector2.one = Vector2.new(1, 1)
 
+-- vide springs do their math in Vector3, so it needs real arithmetic
 local Vector3 = {}
-local _, _, new_vector3 = datatype("Vector3")
+local Vector3_meta, Vector3_methods, new_vector3 = datatype("Vector3", function(fields, key)
+	if key == "Magnitude" then return math.sqrt(fields.X ^ 2 + fields.Y ^ 2 + fields.Z ^ 2) end
+	return nil
+end)
 function Vector3.new(x, y, z) return new_vector3({ X = x or 0, Y = y or 0, Z = z or 0 }) end
+local function v3_op(op)
+	return function(a, b)
+		if type(a) == "number" then return Vector3.new(op(a, b.X), op(a, b.Y), op(a, b.Z)) end
+		if type(b) == "number" then return Vector3.new(op(a.X, b), op(a.Y, b), op(a.Z, b)) end
+		return Vector3.new(op(a.X, b.X), op(a.Y, b.Y), op(a.Z, b.Z))
+	end
+end
+Vector3_meta.__add = v3_op(function(a, b) return a + b end)
+Vector3_meta.__sub = v3_op(function(a, b) return a - b end)
+Vector3_meta.__mul = v3_op(function(a, b) return a * b end)
+Vector3_meta.__div = v3_op(function(a, b) return a / b end)
+Vector3_meta.__unm = function(a) return Vector3.new(-a.X, -a.Y, -a.Z) end
+Vector3_meta.__eq = function(a, b) return a.X == b.X and a.Y == b.Y and a.Z == b.Z end
+function Vector3_methods.Dot(a, b) return a.X * b.X + a.Y * b.Y + a.Z * b.Z end
+function Vector3_methods.Lerp(a, b, t) return Vector3.new(lerp(a.X, b.X, t), lerp(a.Y, b.Y, t), lerp(a.Z, b.Z, t)) end
 Vector3.zero = Vector3.new()
 Vector3.one = Vector3.new(1, 1, 1)
 
