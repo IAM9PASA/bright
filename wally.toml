@@ -1,0 +1,10 @@
+[package]
+name = "iam9pasa/bright"
+description = "UI building blocks on top of vide, themed like CSS variables"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+exclude = ["Packages"]
+
+[dependencies]
+vide = "centau/vide@0.3.1"
