@@ -60,14 +60,16 @@ local style = require(script.style)
 
 local create = vide.create
 
-local styles = {
-	brainrot = require(script.styles.brainrot),
-	clean = require(script.styles.clean),
-	glass = require(script.styles.glass),
-	scifi = require(script.styles.scifi),
-	fantasy = require(script.styles.fantasy),
-	pastel = require(script.styles.pastel),
-}
+-- styles load on first use, so one broken style only breaks the code that picks it
+local styles = setmetatable({}, {
+	__index = function(self, name)
+		local module = script.styles:FindFirstChild(name)
+		if not module then return nil end
+		local loaded = require(module)
+		rawset(self, name, loaded)
+		return loaded
+	end,
+})
 
 local alignments = {
 	start = { Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top },
