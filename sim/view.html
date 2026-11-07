@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bright Sim</title>
+<style>
+/*SIM_FONTS*/
+:root {
+	--bg: #0e1110; --bar: #161a18; --line: #2a302d; --text: #e4ebe7; --dim: #8b958f; --accent: #4ade80;
+	--warn: #fbbf24; --bad: #f87171;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 Inter, system-ui, sans-serif; }
+body { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+body.bare { display: block; background: #000; }
+body.bare #bar, body.bare #side, body.bare #tip { display: none; }
+body.bare #main, body.bare #stage { display: block; overflow: visible; position: static; }
+
+#bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 12px; background: var(--bar); border-bottom: 1px solid var(--line); }
+#bar .group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+#bar .label { color: var(--dim); margin-right: 2px; }
+#bar button, #bar select { font: inherit; color: var(--text); background: #222826; border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+#bar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#bar .title { font-weight: 700; }
+#zoom { color: var(--dim); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+#main { display: grid; grid-template-columns: 1fr auto; min-height: 0; }
+#stage { position: relative; overflow: hidden; display: grid; place-items: center; min-width: 0; }
+#device { position: relative; transform-origin: center; box-shadow: 0 0 0 1px #333, 0 20px 60px #0008; border-radius: 6px; overflow: hidden; }
+body.bare #device { transform: none !important; box-shadow: none; border-radius: 0; position: absolute; left: 0; top: 0; }
+#screen { position: absolute; inset: 0; overflow: hidden; }
+
+/* backdrops stand in for the 3d world behind the ui */
+.backdrop-world { background: linear-gradient(#78aee0 0%, #b4d6ee 52%, #6f9a55 52%, #4f7a3c 100%); }
+.backdrop-dark { background: #1d2321; }
+.backdrop-light { background: #dfe5e2; }
+
+#side { width: 320px; border-left: 1px solid var(--line); background: var(--bar); overflow: auto; padding: 10px 12px; }
+#side h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 6px 0 8px; }
+#side .check { padding: 7px 8px; border-radius: 6px; border: 1px solid var(--line); margin-bottom: 6px; cursor: pointer; }
+#side .check:hover { border-color: var(--dim); }
+#side .check b { font-weight: 600; }
+#side .check .path { color: var(--dim); font-size: 12px; word-break: break-all; }
+#side .warn b { color: var(--warn); }
+#side .fail b { color: var(--bad); }
+#side .ok { color: var(--accent); }
+#side .hint { color: var(--dim); font-size: 12px; margin-top: 12px; }
+@media (max-width: 760px) { #main { grid-template-columns: 1fr; grid-template-rows: 1fr 40%; } #side { width: auto; border-left: 0; border-top: 1px solid var(--line); } }
+
+#tip { position: fixed; pointer-events: none; z-index: 10; background: #000d; color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 12px; white-space: pre; display: none; }
+.inspect-box { position: absolute; pointer-events: none; z-index: 100000; outline: 1px solid #38bdf8; background: #38bdf81a; }
+.flag-warn { outline: 2px dashed var(--warn) !important; outline-offset: -1px; }
+.flag-fail { outline: 2px dashed var(--bad) !important; outline-offset: -1px; }
+.flash { animation: flash .9s ease 2; }
+@keyframes flash { 50% { box-shadow: 0 0 0 4px #38bdf8; } }
+
+/* roblox instances */
+.rbx { position: absolute; }
+.rbx-text { position: absolute; display: flex; pointer-events: none; overflow: visible; }
+.rbx-text span { display: block; min-width: 0; }
+.rbx-img { position: absolute; inset: 0; pointer-events: none; background-repeat: no-repeat; background-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; mask-repeat: no-repeat; mask-position: center; }
+.rbx-stroke { position: absolute; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.rbx-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--sb-c) transparent; }
+.rbx-scroll::-webkit-scrollbar { width: var(--sb-w); height: var(--sb-w); }
+.rbx-scroll::-webkit-scrollbar-thumb { background: var(--sb-c); border-radius: var(--sb-w); }
+.rbx-scroll::-webkit-scrollbar-track, .rbx-scroll::-webkit-scrollbar-corner { background: transparent; }
+.topbar { position: absolute; left: 0; right: 0; top: 0; pointer-events: none; z-index: 99999; }
+.topbar i { position: absolute; top: 12px; width: 44px; height: 44px; border-radius: 22px; background: #0009; }
+.safe { position: absolute; pointer-events: none; z-index: 99998; background: repeating-linear-gradient(45deg, #f871711f 0 6px, transparent 6px 12px); }
+</style>
+</head>
+<body>
+<div id="bar">
+	<span class="title">bright sim</span>
+	<div class="group" id="scenes"><span class="label">Scene</span></div>
+	<div class="group"><span class="label">Device</span><select id="device-select"></select></div>
+	<div class="group"><span class="label">Behind</span><select id="backdrop-select">
+		<option value="world">Game world</option><option value="dark">Dark</option><option value="light">Light</option>
+	</select></div>
+	<div class="group">
+		<button id="toggle-topbar" aria-pressed="true" title="Roblox top bar buttons and safe areas">Top bar</button>
+		<button id="toggle-checks" aria-pressed="true" title="Outline elements that fail a design check">Checks</button>
+		<button id="toggle-inspect" aria-pressed="true" title="Hover elements to see their path and size">Inspect</button>
+	</div>
+	<span id="zoom"></span>
+</div>
+<div id="main">
+	<div id="stage"><div id="device"><div id="screen"></div></div></div>
+	<aside id="side"></aside>
+</div>
+<div id="tip"></div>
+<script>
+const DATA = /*SIM_DATA*/null;
+
+// DEVICES -------------------------
+// defined in run.mjs, the luau ran once per device so each has its own tree
+
+const DEVICES = DATA.devices;
+const TOPBAR = 58; // roblox top bar height, the default gui inset
+const BACKDROP_COLOR = { world: [0.55, 0.67, 0.68], dark: [0.114, 0.137, 0.129], light: [0.875, 0.898, 0.886] };
+
+// DEFAULTS -------------------------
+// roblox defaults for anything the luau side did not set
+
+const GUI_CLASSES = new Set(["Frame", "TextLabel", "TextButton", "TextBox", "ImageLabel", "ImageButton", "ScrollingFrame", "CanvasGroup", "ViewportFrame", "VideoFrame"]);
+const TEXT_CLASSES = new Set(["TextLabel", "TextButton", "TextBox"]);
+const IMAGE_CLASSES = new Set(["ImageLabel", "ImageButton"]);
+const BUTTON_CLASSES = new Set(["TextButton", "ImageButton", "TextBox"]);
+
+const C3 = (r, g, b) => ({ t: "C3", r: r / 255, g: g / 255, b: b / 255 });
+const U2 = (xs, xo, ys, yo) => ({ t: "U2", xs, xo, ys, yo });
+const DEFAULTS = {
+	Size: U2(0, 100, 0, 100), Position: U2(0, 0, 0, 0), AnchorPoint: { x: 0, y: 0 }, Visible: true, ZIndex: 1, LayoutOrder: 0,
+	BackgroundColor3: C3(163, 162, 165), BackgroundTransparency: 0, BorderColor3: C3(27, 42, 53), BorderSizePixel: 1,
+	ClipsDescendants: false, Text: "Label", TextColor3: C3(27, 42, 53), TextSize: 14, TextScaled: false, TextWrapped: false,
+	TextTransparency: 0, TextStrokeTransparency: 1, TextStrokeColor3: C3(0, 0, 0), TextXAlignment: "Center", TextYAlignment: "Center",
+	TextTruncate: "None", LineHeight: 1, RichText: false, PlaceholderText: "", PlaceholderColor3: C3(178, 178, 178),
+	Image: "", ImageColor3: C3(255, 255, 255), ImageTransparency: 0, ScaleType: "Stretch",
+	CanvasSize: U2(0, 0, 2, 0), AutomaticCanvasSize: "None", ScrollBarThickness: 12, ScrollBarImageColor3: C3(255, 255, 255),
+	ScrollBarImageTransparency: 0, ScrollingDirection: "XY", Enabled: true, DisplayOrder: 0, IgnoreGuiInset: false,
+	ScreenInsets: "CoreUISafeInsets", CornerRadius: { t: "U", s: 0, o: 8 }, Color: C3(255, 255, 255), Transparency: 0, Thickness: 1,
+	ApplyStrokeMode: "Contextual", StrokeSizingMode: "FixedSize", Rotation: 0, Offset: { x: 0, y: 0 },
+	FillDirection: "Vertical", SortOrder: "Name", Padding: { t: "U", s: 0, o: 0 }, HorizontalAlignment: "Left", VerticalAlignment: "Top",
+	HorizontalFlex: "None", VerticalFlex: "None", CellSize: U2(0, 100, 0, 100), CellPadding: U2(0, 5, 0, 5), StartCorner: "TopLeft",
+	FillDirectionMaxCells: 0, AspectRatio: 1, AspectType: "FitWithinMaxSize", DominantAxis: "Width", Scale: 1,
+	MinTextSize: 1, MaxTextSize: 100,
+};
+const CLASS_DEFAULTS = {
+	TextButton: { Text: "Button" }, TextBox: { Text: "TextBox" }, TextLabel: { Size: U2(0, 200, 0, 50) },
+	UIGridLayout: { FillDirection: "Horizontal" }, UIListLayout: { FillDirection: "Vertical" },
+	UIStroke: { Color: C3(0, 0, 0) },
+};
+function prop(node, key) {
+	const v = node.p[key];
+	if (v !== undefined) return v;
+	const c = CLASS_DEFAULTS[node.c];
+	if (c && c[key] !== undefined) return c[key];
+	return DEFAULTS[key];
+}
+
+// HELPERS -------------------------
+
+const css = (c, a = 1) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${+a.toFixed(4)})`;
+const mul = (a, b) => ({ r: a.r * b.r, g: a.g * b.g, b: a.b * b.b });
+const udim = (u, size) => (u ? u.s * size + u.o : 0);
+const udim2 = (u, w, h) => [u.xs * w + u.xo, u.ys * h + u.yo];
+const child_of = (node, cls) => node.k.find((k) => k.c === cls && prop(k, "Enabled") !== false);
+const is_gui = (node) => GUI_CLASSES.has(node.c);
+
+function seq_at(keys, t, index) {
+	if (t <= keys[0][0]) return keys[0][index];
+	for (let i = 1; i < keys.length; i++) {
+		if (t <= keys[i][0]) {
+			const [t0, t1] = [keys[i - 1][0], keys[i][0]];
+			const f = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+			return keys[i - 1][index] + (keys[i][index] - keys[i - 1][index]) * f;
+		}
+	}
+	return keys[keys.length - 1][index];
+}
+
+// uigradient multiplies the base color, so build css stops from color x keypoint
+function gradient_css(base, alpha, gradient) {
+	const color = prop(gradient, "Color");
+	const transparency = gradient.p.Transparency;
+	const times = new Set([0, 1]);
+	if (color && color.t === "CS") color.k.forEach((k) => times.add(k[0]));
+	if (transparency && transparency.t === "NS") transparency.k.forEach((k) => times.add(k[0]));
+	const stops = [...times].sort((a, b) => a - b).map((t) => {
+		const c = color && color.t === "CS" ? { r: seq_at(color.k, t, 1), g: seq_at(color.k, t, 2), b: seq_at(color.k, t, 3) } : { r: 1, g: 1, b: 1 };
+		const tr = transparency && transparency.t === "NS" ? seq_at(transparency.k, t, 1) : 0;
+		return `${css(mul(base, c), alpha * (1 - tr))} ${(t * 100).toFixed(2)}%`;
+	});
+	// roblox 0 = left to right, 90 = top to bottom. css 90deg = left to right
+	return `linear-gradient(${(prop(gradient, "Rotation") || 0) + 90}deg, ${stops.join(", ")})`;
+}
+
+// average color + opacity of a background, used by the contrast check
+function average_fill(node) {
+	const transparency = prop(node, "BackgroundTransparency");
+	if (transparency >= 1) return null;
+	let color = prop(node, "BackgroundColor3");
+	let alpha = 1 - transparency;
+	const gradient = child_of(node, "UIGradient");
+	if (gradient) {
+		const seq = prop(gradient, "Color");
+		if (seq && seq.t === "CS") {
+			const n = 11;
+			let r = 0, g = 0, b = 0;
+			for (let i = 0; i < n; i++) {
+				const t = i / (n - 1);
+				r += seq_at(seq.k, t, 1); g += seq_at(seq.k, t, 2); b += seq_at(seq.k, t, 3);
+			}
+			color = mul(color, { r: r / n, g: g / n, b: b / n });
+		}
+		const tr = gradient.p.Transparency;
+		if (tr && tr.t === "NS") alpha *= 1 - (seq_at(tr.k, 0, 1) + seq_at(tr.k, 0.5, 1) + seq_at(tr.k, 1, 1)) / 3;
+	}
+	return { color, alpha };
+}
+
+function luminance(c) {
+	const f = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+	return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+}
+const contrast = (a, b) => {
+	const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+	return (x + 0.05) / (y + 0.05);
+};
+const blend = (under, over, alpha) => ({ r: under.r + (over.r - under.r) * alpha, g: under.g + (over.g - under.g) * alpha, b: under.b + (over.b - under.b) * alpha });
+
+// TEXT -------------------------
+
+const FONT_STACKS = {
+	BuilderSans: `"Builder Sans", Inter, "Segoe UI", system-ui, sans-serif`,
+	GothamSSm: `Gotham, "Gotham SSm", Montserrat, Inter, system-ui, sans-serif`,
+	Montserrat: `Montserrat, Inter, system-ui, sans-serif`,
+	SourceSansPro: `"Source Sans 3", "Source Sans Pro", Inter, system-ui, sans-serif`,
+	FredokaOne: `"Fredoka One", Fredoka, Nunito, Inter, system-ui, sans-serif`,
+	Michroma: `Michroma, "JetBrains Mono", Inter, sans-serif`,
+	Merriweather: `Merriweather, Caladea, "Bitstream Charter", Georgia, serif`,
+	Oswald: `Oswald, Inter, sans-serif`,
+	Nunito: `Nunito, Inter, sans-serif`,
+	Roboto: `Roboto, Inter, system-ui, sans-serif`,
+	RobotoMono: `"Roboto Mono", "JetBrains Mono", monospace`,
+	Inconsolata: `Inconsolata, "JetBrains Mono", monospace`,
+	LegacyArial: `Arial, "Liberation Sans", sans-serif`,
+};
+const WEIGHTS = { Thin: 100, ExtraLight: 200, Light: 300, Regular: 400, Medium: 500, SemiBold: 600, Bold: 700, ExtraBold: 800, Heavy: 900 };
+
+function font_of(node) {
+	const face = node.p.FontFace;
+	if (face && face.t === "F") {
+		const name = (face.f.match(/families\/([^.]+)\.json/) || [])[1] || "BuilderSans";
+		// fredoka one only has one (heavy) weight in roblox, fredoka 600 matches it
+		const weight = name === "FredokaOne" ? 600 : WEIGHTS[face.w] || 400;
+		return { family: FONT_STACKS[name] || `"${name}", Inter, system-ui, sans-serif`, weight, italic: face.s === "Italic" };
+	}
+	const legacy = String(prop(node, "Font") || "SourceSans");
+	const bold = /Bold|Black|Heavy/.test(legacy);
+	const base = legacy.replace(/(Bold|Black|Heavy|Semibold|Light|Italic)$/g, "");
+	const map = { SourceSans: "SourceSansPro", Gotham: "GothamSSm", Arial: "LegacyArial", Legacy: "LegacyArial" };
+	return { family: FONT_STACKS[map[base] || base] || FONT_STACKS.BuilderSans, weight: bold ? 700 : 400, italic: /Italic/.test(legacy) };
+}
+
+const canvas = document.createElement("canvas").getContext("2d");
+const width_cache = new Map();
+function text_width(text, font, size) {
+	const key = `${font.weight}|${font.italic}|${size}|${font.family}|${text}`;
+	let w = width_cache.get(key);
+	if (w === undefined) {
+		canvas.font = `${font.italic ? "italic " : ""}${font.weight} ${size}px ${font.family}`;
+		w = canvas.measureText(text).width;
+		width_cache.set(key, w);
+	}
+	return w;
+}
+
+function wrap_lines(text, font, size, max_width) {
+	const lines = [];
+	let widest_word = 0;
+	for (const paragraph of text.split("\n")) {
+		let line = "";
+		for (const word of paragraph.split(" ")) {
+			widest_word = Math.max(widest_word, text_width(word, font, size));
+			const next = line ? `${line} ${word}` : word;
+			if (line && text_width(next, font, size) > max_width) {
+				lines.push(line);
+				line = word;
+			} else {
+				line = next;
+			}
+		}
+		lines.push(line);
+	}
+	return { lines, widest_word };
+}
+
+// roblox TextScaled: biggest whole size up to 100 where the wrapped text fits the box
+function scaled_size(text, font, w, h, line_height, min, max) {
+	let lo = Math.max(1, min), hi = Math.min(100, max), best = lo;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const { lines, widest_word } = wrap_lines(text, font, mid, w);
+		if (widest_word <= w + 0.5 && lines.length * mid * line_height <= h + 0.5) {
+			best = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return best;
+}
+
+const strip_rich = (text) => text.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+
+// LAYOUT -------------------------
+
+let state = { scene: 0, device: "desktop", backdrop: "world", topbar: true, checks: true, inspect: true, bare: false };
+let records = []; // per rendered instance: { node, el, path, x, y, w, h, chain, screen }
+let text_records = [];
+
+function measure(node, pw, ph) {
+	let [w, h] = udim2(prop(node, "Size"), pw, ph);
+	const aspect = child_of(node, "UIAspectRatioConstraint");
+	if (aspect) [w, h] = apply_aspect(aspect, w, h);
+	const limits = child_of(node, "UISizeConstraint");
+	if (limits) {
+		const min = limits.p.MinSize || { x: 0, y: 0 }, max = limits.p.MaxSize || { x: Infinity, y: Infinity };
+		w = Math.min(Math.max(w, min.x), max.x);
+		h = Math.min(Math.max(h, min.y), max.y);
+	}
+	return [Math.max(0, w), Math.max(0, h)];
+}
+
+function apply_aspect(aspect, w, h) {
+	const ratio = prop(aspect, "AspectRatio") || 1;
+	if (prop(aspect, "AspectType") === "ScaleWithParentSize") {
+		return prop(aspect, "DominantAxis") === "Height" ? [h * ratio, h] : [w, w / ratio];
+	}
+	// FitWithinMaxSize: only ever shrinks
+	return w / h > ratio ? [h * ratio, h] : [w, w / ratio];
+}
+
+const align_offset = (value, free) => (/Center/.test(value) ? free / 2 : /Right|Bottom/.test(value) ? free : 0);
+
+function sort_children(items, layout) {
+	const by_order = prop(layout, "SortOrder") === "LayoutOrder";
+	return items.map((it, i) => ({ ...it, i })).sort((a, b) => {
+		if (by_order) {
+			const d = prop(a.node, "LayoutOrder") - prop(b.node, "LayoutOrder");
+			return d || a.i - b.i;
+		}
+		return a.node.n < b.node.n ? -1 : a.node.n > b.node.n ? 1 : a.i - b.i;
+	});
+}
+
+function list_layout(layout, items, cw, ch) {
+	const row = prop(layout, "FillDirection") === "Horizontal";
+	const main = row ? cw : ch;
+	const gap = udim(prop(layout, "Padding"), main);
+	const sorted = sort_children(items, layout);
+	const fill = row ? prop(layout, "HorizontalFlex") === "Fill" : prop(layout, "VerticalFlex") === "Fill";
+	let total = sorted.reduce((s, it) => s + (row ? it.w : it.h), 0) + gap * Math.max(0, sorted.length - 1);
+	if (fill && sorted.length) {
+		const extra = (main - total) / sorted.length;
+		for (const it of sorted) row ? (it.w = Math.max(0, it.w + extra)) : (it.h = Math.max(0, it.h + extra));
+		total = main;
+	}
+	const main_align = row ? prop(layout, "HorizontalAlignment") : prop(layout, "VerticalAlignment");
+	const cross_align = row ? prop(layout, "VerticalAlignment") : prop(layout, "HorizontalAlignment");
+	let cursor = align_offset(main_align, main - total);
+	for (const it of sorted) {
+		if (row) {
+			it.x = cursor;
+			it.y = align_offset(cross_align, ch - it.h);
+			cursor += it.w + gap;
+		} else {
+			it.y = cursor;
+			it.x = align_offset(cross_align, cw - it.w);
+			cursor += it.h + gap;
+		}
+	}
+	return sorted;
+}
+
+function grid_layout(layout, items, cw, ch) {
+	let [cell_w, cell_h] = udim2(prop(layout, "CellSize"), cw, ch);
+	const aspect = child_of(layout, "UIAspectRatioConstraint");
+	if (aspect) [cell_w, cell_h] = apply_aspect(aspect, cell_w, cell_h);
+	const [pad_x, pad_y] = udim2(prop(layout, "CellPadding"), cw, ch);
+	const horizontal = prop(layout, "FillDirection") !== "Vertical";
+	let per_line = horizontal ? Math.floor((cw + pad_x) / (cell_w + pad_x) + 1e-6) : Math.floor((ch + pad_y) / (cell_h + pad_y) + 1e-6);
+	const max_cells = prop(layout, "FillDirectionMaxCells");
+	if (max_cells > 0) per_line = Math.min(per_line, max_cells);
+	per_line = Math.max(1, per_line);
+	const sorted = sort_children(items, layout);
+	const cols = horizontal ? Math.min(per_line, sorted.length) : Math.ceil(sorted.length / per_line);
+	const rows = horizontal ? Math.ceil(sorted.length / per_line) : Math.min(per_line, sorted.length);
+	const used_w = cols * cell_w + Math.max(0, cols - 1) * pad_x;
+	const used_h = rows * cell_h + Math.max(0, rows - 1) * pad_y;
+	const ox = align_offset(prop(layout, "HorizontalAlignment"), cw - used_w);
+	const oy = align_offset(prop(layout, "VerticalAlignment"), ch - used_h);
+	sorted.forEach((it, i) => {
+		const [col, rowi] = horizontal ? [i % per_line, Math.floor(i / per_line)] : [Math.floor(i / per_line), i % per_line];
+		it.x = ox + col * (cell_w + pad_x);
+		it.y = oy + rowi * (cell_h + pad_y);
+		it.w = cell_w;
+		it.h = cell_h;
+	});
+	return { sorted, used_w, used_h };
+}
+
+// places gui children inside a w x h box, returns how far content reaches (for scrolling canvases)
+function layout_children(node, el, w, h, chain, path, screen) {
+	const padding = child_of(node, "UIPadding");
+	const pl = padding ? udim(padding.p.PaddingLeft, w) : 0, pr = padding ? udim(padding.p.PaddingRight, w) : 0;
+	const pt = padding ? udim(padding.p.PaddingTop, h) : 0, pb = padding ? udim(padding.p.PaddingBottom, h) : 0;
+	const cw = Math.max(0, w - pl - pr), ch = Math.max(0, h - pt - pb);
+
+	const guis = node.k.filter((k) => is_gui(k) && prop(k, "Visible") !== false);
+	let items = guis.map((k) => {
+		const [cw2, ch2] = measure(k, cw, ch);
+		return { node: k, w: cw2, h: ch2, x: 0, y: 0 };
+	});
+	const grid = child_of(node, "UIGridLayout");
+	const list = child_of(node, "UIListLayout");
+	if (grid) {
+		items = grid_layout(grid, items, cw, ch).sorted;
+	} else if (list) {
+		items = list_layout(list, items, cw, ch);
+	} else {
+		for (const it of items) {
+			const [px, py] = udim2(prop(it.node, "Position"), cw, ch);
+			const anchor = prop(it.node, "AnchorPoint");
+			it.x = px - anchor.x * it.w;
+			it.y = py - anchor.y * it.h;
+		}
+	}
+	let reach_x = 0, reach_y = 0;
+	for (const it of items) {
+		reach_x = Math.max(reach_x, pl + it.x + it.w);
+		reach_y = Math.max(reach_y, pt + it.y + it.h);
+		render(it.node, el, pl + it.x, pt + it.y, it.w, it.h, chain, `${path}.${it.node.n}`, screen);
+	}
+	return { reach_x: reach_x + pr, reach_y: reach_y + pb };
+}
+
+// RENDER -------------------------
+
+function render(node, parent_el, x, y, w, h, chain, path, screen) {
+	const el = document.createElement("div");
+	el.className = "rbx";
+	el.dataset.path = path;
+	el.dataset.cls = node.c;
+	Object.assign(el.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, zIndex: prop(node, "ZIndex") });
+	parent_el.appendChild(el);
+
+	const rotation = prop(node, "Rotation");
+	const scale = child_of(node, "UIScale");
+	const transforms = [];
+	if (rotation) transforms.push(`rotate(${rotation}deg)`);
+	if (scale && prop(scale, "Scale") !== 1) transforms.push(`scale(${prop(scale, "Scale")})`);
+	if (transforms.length) {
+		const a = prop(node, "AnchorPoint");
+		el.style.transformOrigin = scale ? `${a.x * 100}% ${a.y * 100}%` : "50% 50%";
+		el.style.transform = transforms.join(" ");
+	}
+
+	const corner = child_of(node, "UICorner");
+	const radius = corner ? Math.min(udim(prop(corner, "CornerRadius"), Math.min(w, h)), Math.min(w, h) / 2) : 0;
+	if (radius) el.style.borderRadius = `${radius}px`;
+
+	// background
+	const bg_t = prop(node, "BackgroundTransparency");
+	const gradient = child_of(node, "UIGradient");
+	if (bg_t < 1) {
+		const bg = prop(node, "BackgroundColor3");
+		el.style.background = gradient ? gradient_css(bg, 1 - bg_t, gradient) : css(bg, 1 - bg_t);
+		const border = prop(node, "BorderSizePixel");
+		if (border > 0 && !corner) el.style.boxShadow = `0 0 0 ${border}px ${css(prop(node, "BorderColor3"), 1 - bg_t)}`;
+	}
+	if (prop(node, "ClipsDescendants") || node.c === "ScrollingFrame" || node.c === "CanvasGroup") el.style.overflow = "hidden";
+	if (node.c === "CanvasGroup" && node.p.GroupTransparency) el.style.opacity = 1 - node.p.GroupTransparency;
+
+	const is_text = TEXT_CLASSES.has(node.c);
+	const stroke = child_of(node, "UIStroke");
+	let stroke_px = null;
+	if (stroke && !(is_text && prop(stroke, "ApplyStrokeMode") !== "Border")) stroke_px = draw_border_stroke(el, stroke, w, h, radius);
+
+	const padding = child_of(node, "UIPadding");
+	const inner = padding
+		? { l: udim(padding.p.PaddingLeft, w), r: udim(padding.p.PaddingRight, w), t: udim(padding.p.PaddingTop, h), b: udim(padding.p.PaddingBottom, h) }
+		: { l: 0, r: 0, t: 0, b: 0 };
+	if (IMAGE_CLASSES.has(node.c)) draw_image(el, node, w, h);
+	const new_chain = [...chain, node];
+	if (is_text) draw_text(el, node, w, h, inner, is_text && stroke, gradient && bg_t >= 1 ? gradient : null, new_chain, path, screen);
+
+	const record = { node, el, path, w, h, chain: new_chain, screen, pad: padding ? inner : null, stroke_px };
+	records.push(record);
+
+	if (node.c === "ScrollingFrame") {
+		draw_scrolling(node, el, w, h, new_chain, path, screen);
+	} else {
+		layout_children(node, el, w, h, new_chain, path, screen);
+	}
+	return el;
+}
+
+function draw_border_stroke(el, stroke, w, h, radius) {
+	const thickness = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(w, h) : prop(stroke, "Thickness");
+	if (thickness <= 0) return null;
+	const alpha = 1 - prop(stroke, "Transparency");
+	const color = prop(stroke, "Color");
+	const gradient = child_of(stroke, "UIGradient");
+	const div = document.createElement("div");
+	div.className = "rbx-stroke";
+	// roblox draws the stroke outside the frame edge
+	Object.assign(div.style, {
+		inset: `${-thickness}px`, padding: `${thickness}px`, borderRadius: radius ? `${radius + thickness}px` : "0",
+		background: gradient ? gradient_css(color, alpha, gradient) : css(color, alpha),
+	});
+	el.appendChild(div);
+	return alpha > 0.3 ? thickness : null;
+}
+
+const IMAGE_PLACEHOLDER = (c) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='4'/><circle cx='9' cy='9' r='2'/><path d='M21 15l-5-5L5 21'/></svg>`)}")`;
+
+function draw_image(el, node, w, h) {
+	const image = prop(node, "Image");
+	const transparency = prop(node, "ImageTransparency");
+	if (!image || transparency >= 1) return;
+	const div = document.createElement("div");
+	div.className = "rbx-img";
+	const color = prop(node, "ImageColor3");
+	const src = DATA.assets && DATA.assets[image];
+	let fit = { Fit: "contain", Crop: "cover" }[prop(node, "ScaleType")] || "100% 100%";
+	let repeat = "no-repeat", position = "center";
+	if (prop(node, "ScaleType") === "Tile") {
+		// TileSize is a UDim2 of the image's own size
+		const [tw, th] = udim2(node.p.TileSize || U2(1, 0, 1, 0), w, h);
+		fit = `${Math.max(tw, 1)}px ${Math.max(th, 1)}px`;
+		repeat = "repeat";
+		position = "0 0";
+	}
+	div.style.opacity = 1 - transparency;
+	const white = color.r > 0.999 && color.g > 0.999 && color.b > 0.999;
+	const gradient = child_of(node, "UIGradient");
+	if (src && gradient) {
+		// uigradient multiplies the image: blend the image over the gradient, cut to the image alpha
+		const url = `url("${src}")`;
+		Object.assign(div.style, {
+			background: `${url} ${position} / ${fit} ${repeat}, ${gradient_css(color, 1, gradient)}`,
+			backgroundBlendMode: "multiply",
+			webkitMaskImage: url, maskImage: url, webkitMaskSize: fit, maskSize: fit,
+			webkitMaskRepeat: repeat, maskRepeat: repeat, webkitMaskPosition: position, maskPosition: position,
+		});
+	} else if (src && white) {
+		Object.assign(div.style, { backgroundImage: `url("${src}")`, backgroundSize: fit, backgroundRepeat: repeat, backgroundPosition: position });
+	} else {
+		// image color multiplies the image, a mask gives that exactly for white icons
+		const url = src ? `url("${src}")` : IMAGE_PLACEHOLDER();
+		Object.assign(div.style, { backgroundColor: css(color), webkitMaskImage: url, maskImage: url, webkitMaskSize: src ? fit : "contain", maskSize: src ? fit : "contain", webkitMaskRepeat: repeat, maskRepeat: repeat, webkitMaskPosition: position, maskPosition: position });
+		if (!src) div.title = `${image} (map it with sim.asset to see the real image)`;
+	}
+	el.appendChild(div);
+}
+
+function draw_text(el, node, w, h, inner, stroke, gradient, chain, path, screen) {
+	let text = prop(node, "Text");
+	let color = prop(node, "TextColor3");
+	let placeholder = false;
+	if (node.c === "TextBox" && text === "") {
+		text = prop(node, "PlaceholderText");
+		color = prop(node, "PlaceholderColor3");
+		placeholder = true;
+	}
+	if (prop(node, "RichText")) text = strip_rich(text);
+	const transparency = prop(node, "TextTransparency");
+	if (!text || transparency >= 1) return;
+
+	const font = font_of(node);
+	const bw = Math.max(0, w - inner.l - inner.r), bh = Math.max(0, h - inner.t - inner.b);
+	const line_height = prop(node, "LineHeight") || 1;
+	const limit = child_of(node, "UITextSizeConstraint");
+	const scaled = prop(node, "TextScaled");
+	const size = scaled
+		? scaled_size(text, font, bw, bh, line_height, limit ? prop(limit, "MinTextSize") : 1, limit ? prop(limit, "MaxTextSize") : 100)
+		: prop(node, "TextSize");
+	const wrapped = scaled || prop(node, "TextWrapped");
+
+	const box = document.createElement("div");
+	box.className = "rbx-text";
+	const x_align = prop(node, "TextXAlignment"), y_align = prop(node, "TextYAlignment");
+	Object.assign(box.style, {
+		left: `${inner.l}px`, top: `${inner.t}px`, width: `${bw}px`, height: `${bh}px`,
+		display: "grid",
+		justifyContent: { Left: "start", Right: "end" }[x_align] || "center",
+		alignContent: { Top: "start", Bottom: "end" }[y_align] || "center",
+	});
+	const span = document.createElement("span");
+	span.textContent = text;
+	Object.assign(span.style, {
+		fontFamily: font.family, fontWeight: font.weight, fontStyle: font.italic ? "italic" : "normal",
+		fontSize: `${size}px`, lineHeight: line_height, color: css(color, 1 - transparency),
+		textAlign: { Left: "left", Right: "right" }[x_align] || "center",
+		whiteSpace: wrapped ? "pre-wrap" : "pre", maxWidth: `${bw}px`,
+	});
+	let truncated = false;
+	if (prop(node, "TextTruncate") !== "None" && !scaled) {
+		if (!wrapped && text_width(text, font, size) > bw) truncated = true;
+		Object.assign(span.style, { overflow: "hidden", textOverflow: "ellipsis" });
+		if (wrapped) Object.assign(span.style, { display: "-webkit-box", webkitBoxOrient: "vertical", webkitLineClamp: String(Math.max(1, Math.floor(bh / (size * line_height)))) });
+	}
+	if (prop(node, "TextStrokeTransparency") < 1) {
+		const sc = css(prop(node, "TextStrokeColor3"), 1 - prop(node, "TextStrokeTransparency"));
+		span.style.textShadow = `-1px -1px 0 ${sc}, 1px -1px 0 ${sc}, -1px 1px 0 ${sc}, 1px 1px 0 ${sc}`;
+	}
+	span.style.gridArea = "1 / 1";
+	if (gradient) {
+		Object.assign(span.style, { background: gradient_css(color, 1 - transparency, gradient), webkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" });
+	}
+	if (stroke) {
+		// uistroke on text sits outside the glyphs: draw a stroked copy underneath
+		const t = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(bw, bh) : prop(stroke, "Thickness");
+		const sc = css(prop(stroke, "Color"), (1 - prop(stroke, "Transparency")) * (1 - transparency));
+		const under = span.cloneNode(true);
+		Object.assign(under.style, { background: "none", color: sc, webkitTextFillColor: sc, webkitTextStroke: `${t * 2}px ${sc}`, strokeLinejoin: "round" });
+		under.setAttribute("aria-hidden", "true");
+		box.appendChild(under);
+	}
+	box.appendChild(span);
+	el.appendChild(box);
+	let outline = null;
+	if (stroke) {
+		const t = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(bw, bh) : prop(stroke, "Thickness");
+		outline = { color: prop(stroke, "Color"), width: t, alpha: 1 - prop(stroke, "Transparency") };
+	}
+	// a text gradient multiplies the text color, so what you see is color x average gradient
+	let seen_color = color;
+	if (gradient) {
+		const seq = prop(gradient, "Color");
+		if (seq && seq.t === "CS") {
+			let r = 0, g = 0, b = 0;
+			for (let i = 0; i <= 10; i++) { r += seq_at(seq.k, i / 10, 1); g += seq_at(seq.k, i / 10, 2); b += seq_at(seq.k, i / 10, 3); }
+			seen_color = mul(color, { r: r / 11, g: g / 11, b: b / 11 });
+		}
+	}
+	text_records.push({ node, el, path, size, font, color: seen_color, alpha: 1 - transparency, chain, placeholder, truncated, scaled, screen, w: bw, h: bh, text, outline, gradient: !!gradient });
+}
+
+function draw_scrolling(node, el, w, h, chain, path, screen) {
+	el.classList.add("rbx-scroll");
+	const thickness = prop(node, "ScrollBarThickness");
+	el.style.setProperty("--sb-w", `${thickness}px`);
+	el.style.setProperty("--sb-c", css(prop(node, "ScrollBarImageColor3"), 1 - prop(node, "ScrollBarImageTransparency")));
+	const dir = prop(node, "ScrollingDirection");
+	el.style.overflowX = dir === "Y" ? "hidden" : "auto";
+	el.style.overflowY = dir === "X" ? "hidden" : "auto";
+
+	const auto = prop(node, "AutomaticCanvasSize");
+	const canvas_el = document.createElement("div");
+	canvas_el.style.position = "relative";
+	el.appendChild(canvas_el);
+
+	// scale inside a scrolling frame is relative to the canvas, which is never smaller than the window.
+	// an automatic axis grows the canvas to fit the content, which can grow scaled children again,
+	// so lay out until it settles (roblox does the same over several frames)
+	const records_before = records.length, texts_before = text_records.length;
+	const pass = (win_w, grow_w, grow_h) => {
+		canvas_el.replaceChildren();
+		records.length = records_before;
+		text_records.length = texts_before;
+		const [cs_w, cs_h] = udim2(prop(node, "CanvasSize"), win_w, h);
+		const base_w = Math.max(cs_w, win_w, grow_w), base_h = Math.max(cs_h, h, grow_h);
+		const reach = layout_children(node, canvas_el, base_w, base_h, chain, path, screen);
+		const canvas_w = /X/.test(auto) ? Math.max(cs_w, win_w, reach.reach_x) : base_w;
+		const canvas_h = /Y/.test(auto) ? Math.max(cs_h, h, reach.reach_y) : base_h;
+		return { canvas_w, canvas_h, base_w, base_h };
+	};
+	const settle = (win_w) => {
+		let result = pass(win_w, 0, 0);
+		for (let i = 0; i < 8 && (result.canvas_w > result.base_w + 0.5 || result.canvas_h > result.base_h + 0.5); i++) {
+			result = pass(win_w, result.canvas_w, result.canvas_h);
+		}
+		return result;
+	};
+	// a vertical bar takes its width out of the window once content overflows
+	let result = settle(w);
+	if (dir !== "X" && result.canvas_h > h + 0.5 && thickness > 0) result = settle(w - thickness);
+	canvas_el.style.width = `${result.canvas_w}px`;
+	canvas_el.style.height = `${result.canvas_h}px`;
+}
+
+// CHECKS -------------------------
+// rules from wcag 2.2 (contrast), apple hig / material (44pt / 48dp tap targets) and roblox's
+// adaptive design guide (readable text, keep buttons clear of the top bar and notches)
+
+function run_checks(device, area) {
+	const out = [];
+	const backdrop = BACKDROP_COLOR[state.backdrop];
+	const base = { r: backdrop[0], g: backdrop[1], b: backdrop[2] };
+
+	for (const t of text_records) {
+		if (!visible_record(t)) continue;
+		let under = base;
+		for (const n of t.chain) {
+			const fill = average_fill(n);
+			if (fill) under = blend(under, fill.color, fill.alpha);
+		}
+		const fg = blend(under, t.color, t.alpha);
+		// a solid outline at least ~1.5px wide is what the letters sit on, so measure against it.
+		// text the same color as its outline is a drop shadow (TitleDown), not something to read
+		const outlined = t.outline && t.outline.alpha > 0.8 && t.outline.width >= 1.5;
+		if (outlined && contrast(t.color, t.outline.color) < 1.2) continue;
+		const ratio = outlined ? contrast(fg, blend(under, t.outline.color, t.outline.alpha)) : contrast(fg, under);
+		const large = t.size >= 24 || (t.size >= 18.66 && t.font.weight >= 700);
+		const need = large ? 3 : 4.5;
+		const label = `"${t.text.slice(0, 24)}${t.text.length > 24 ? "…" : ""}"${outlined ? " (vs its outline)" : ""}`;
+		// wcag exempts disabled controls from contrast
+		const disabled = t.chain.some((n) => n.p.Interactable === false);
+		if (ratio < need && !disabled) {
+			out.push({ level: ratio < 3 ? "fail" : "warn", rule: "contrast", path: t.path, el: t.el,
+				message: `${label} ${ratio.toFixed(2)}:1, needs ${need}:1 (${large ? "large" : "normal"} text${t.placeholder ? ", placeholder" : ""})` });
+		}
+		const min_size = device.touch ? 12 : 11;
+		if (t.size < min_size) {
+			out.push({ level: t.size < 9 ? "fail" : "warn", rule: "text size", path: t.path, el: t.el, message: `${label} renders at ${t.size}px, under ${min_size}px is hard to read on this screen` });
+		}
+		if (t.truncated) out.push({ level: "warn", rule: "truncated", path: t.path, el: t.el, message: `${label} is cut off with an ellipsis` });
+	}
+
+	// measured rules (RULES.md): padding that looks even, outlines that survive small screens
+	for (const r of records) {
+		if (!visible_record(r)) continue;
+		if (r.pad && !TEXT_CLASSES.has(r.node.c)) {
+			const side = Math.max(r.pad.l, r.pad.r), top = Math.max(r.pad.t, r.pad.b);
+			if (side > 2 && top > 2 && Math.max(side, top) / Math.min(side, top) > 1.6) {
+				out.push({ level: "warn", rule: "even padding", path: r.path, el: r.el, message: `sides ${Math.round(side)}px vs top/bottom ${Math.round(top)}px, use ui.pad(space, aspect)` });
+			}
+		}
+		if (r.stroke_px !== null && r.stroke_px < 1) {
+			out.push({ level: "warn", rule: "thin stroke", path: r.path, el: r.el, message: `outline is ${r.stroke_px.toFixed(2)}px on this screen and will flicker or vanish, raise its Thickness` });
+		}
+	}
+	for (const t of text_records) {
+		if (t.outline && t.outline.alpha > 0.5 && t.outline.width < 0.75 && visible_record(t) && contrast(t.color, t.outline.color) >= 1.2) {
+			out.push({ level: "warn", rule: "thin stroke", path: t.path, el: t.el, message: `text outline is ${t.outline.width.toFixed(2)}px here, too thin to read as an outline` });
+		}
+	}
+
+	// static sizing rules from src/lint.luau (offsets, px strokes, unscaled text), found by the luau run
+	const scene = DATA.runs[state.device][state.scene] || DATA.runs[state.device][0];
+	for (const p of scene.lint || []) {
+		const el = document.querySelector(`#screen [data-path="${CSS.escape(p.path)}"]`) || document.querySelector(`#screen [data-path="${CSS.escape(p.path.split(".").slice(0, -1).join("."))}"]`);
+		if (el) out.push({ level: p.level, rule: p.rule, path: p.path, el, message: p.message });
+		else out.push({ level: p.level, rule: p.rule, path: p.path, el: document.getElementById("screen"), message: p.message });
+	}
+
+	for (const r of records) {
+		const interactive = BUTTON_CLASSES.has(r.node.c) && prop(r.node, "Visible") !== false && r.node.p.Interactable !== false;
+		if (!interactive) continue;
+		const full = r.el.getBoundingClientRect();
+		const rect = visible_rect(r);
+		if (!rect) continue;
+		const scr = r.screen.getBoundingClientRect();
+		const zoom = scr.width / r.screen.offsetWidth || 1;
+		const rw = full.width / zoom, rh = full.height / zoom;
+		const min = device.tv ? 64 : 44;
+		if ((device.touch || device.tv) && Math.min(rw, rh) < min - 0.5) {
+			out.push({ level: Math.min(rw, rh) < 32 ? "fail" : "warn", rule: "tap target", path: r.path, el: r.el, message: `${Math.round(rw)}x${Math.round(rh)}px, aim for ${min}x${min} on ${device.touch ? "touch" : "tv"}` });
+		}
+		const dev = document.getElementById("device").getBoundingClientRect();
+		const left = (rect.left - dev.left) / zoom, top = (rect.top - dev.top) / zoom;
+		const right = left + rect.width / zoom, bottom = top + rect.height / zoom;
+		if (left < area.l - 0.5 || top < area.t - 0.5 || right > device.width - area.r + 0.5 || bottom > device.height - area.b + 0.5) {
+			const why = top < TOPBAR && state.topbar ? "overlaps the roblox top bar" : "is outside the safe area (notch / screen edge)";
+			out.push({ level: "warn", rule: "safe area", path: r.path, el: r.el, message: `button ${why}` });
+		}
+	}
+	return out;
+}
+
+// the part of the element left after scrolling frames / clipping parents, null when fully hidden
+function visible_rect(r) {
+	const rect = r.el.getBoundingClientRect();
+	let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
+	for (let el = r.el.parentElement; el && el !== r.screen; el = el.parentElement) {
+		if (getComputedStyle(el).overflow === "visible") continue;
+		const c = el.getBoundingClientRect();
+		left = Math.max(left, c.left); top = Math.max(top, c.top);
+		right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+	}
+	if (right - left <= 1 || bottom - top <= 1) return null;
+	return { left, top, width: right - left, height: bottom - top, right, bottom };
+}
+const visible_record = (r) => visible_rect(r) !== null;
+
+// SHOW -------------------------
+
+function show(options = {}) {
+	Object.assign(state, options);
+	const device = DEVICES[state.device];
+	if (!device) return null;
+	const run = DATA.runs[state.device];
+	const scene = run[state.scene] || run[0];
+	document.body.classList.toggle("bare", !!state.bare);
+
+	const dev = document.getElementById("device");
+	const screen = document.getElementById("screen");
+	dev.style.width = `${device.width}px`;
+	dev.style.height = `${device.height}px`;
+	dev.className = `backdrop-${state.backdrop}`;
+	screen.replaceChildren();
+	dev.querySelectorAll(".topbar, .safe, .inspect-box").forEach((e) => e.remove());
+	records = [];
+	text_records = [];
+
+	let button_area = { l: device.safe.l, r: device.safe.r, t: Math.max(device.safe.t, TOPBAR), b: device.safe.b };
+	const guis = [...scene.guis].filter((g) => prop(g, "Enabled") !== false).sort((a, b) => prop(a, "DisplayOrder") - prop(b, "DisplayOrder"));
+	guis.forEach((gui, order) => {
+		const insets_mode = prop(gui, "ScreenInsets");
+		const ignore = prop(gui, "IgnoreGuiInset");
+		const ins = insets_mode === "None" ? { l: 0, r: 0, t: 0, b: 0 } : { ...device.safe };
+		if (!ignore && insets_mode !== "None") ins.t = Math.max(ins.t, TOPBAR);
+		if (!ignore && insets_mode === "None") ins.t = TOPBAR;
+		const el = document.createElement("div");
+		el.className = "rbx";
+		el.dataset.path = gui.n;
+		el.dataset.cls = "ScreenGui";
+		const w = device.width - ins.l - ins.r, h = device.height - ins.t - ins.b;
+		Object.assign(el.style, { left: `${ins.l}px`, top: `${ins.t}px`, width: `${w}px`, height: `${h}px`, zIndex: order + 1 });
+		screen.appendChild(el);
+		layout_children(gui, el, w, h, [], gui.n, screen);
+	});
+
+	if (state.topbar) {
+		const bar = document.createElement("div");
+		bar.className = "topbar";
+		bar.style.height = `${TOPBAR}px`;
+		bar.title = "Roblox top bar area";
+		const left = device.safe.l + 12;
+		[0, 1].forEach((i) => {
+			const dot = document.createElement("i");
+			dot.style.left = `${left + i * 52}px`;
+			bar.appendChild(dot);
+		});
+		const right = document.createElement("i");
+		right.style.right = `${device.safe.r + 12}px`;
+		bar.appendChild(right);
+		dev.appendChild(bar);
+		for (const [side, size] of Object.entries(device.safe)) {
+			if (!size) continue;
+			const s = document.createElement("div");
+			s.className = "safe";
+			Object.assign(s.style, side === "l" ? { left: 0, top: 0, bottom: 0, width: `${size}px` } : side === "r" ? { right: 0, top: 0, bottom: 0, width: `${size}px` } : side === "t" ? { left: 0, right: 0, top: 0, height: `${size}px` } : { left: 0, right: 0, bottom: 0, height: `${size}px` });
+			dev.appendChild(s);
+		}
+	}
+
+	fit();
+	const checks = run_checks(device, button_area);
+	sim.checks = checks.map(({ el, ...rest }) => rest);
+	if (state.checks) for (const c of checks) c.el.classList.add(c.level === "fail" ? "flag-fail" : "flag-warn");
+	render_side(checks);
+	save_state();
+	return { width: device.width, height: device.height };
+}
+
+function fit() {
+	const dev = document.getElementById("device");
+	const device = DEVICES[state.device];
+	if (state.bare) {
+		document.getElementById("zoom").textContent = "";
+		return;
+	}
+	const stage = document.getElementById("stage").getBoundingClientRect();
+	const zoom = Math.min((stage.width - 32) / device.width, (stage.height - 32) / device.height, 1);
+	dev.style.transform = `scale(${zoom})`;
+	document.getElementById("zoom").textContent = `${device.width}x${device.height} at ${Math.round(zoom * 100)}%`;
+}
+
+function render_side(checks) {
+	const side = document.getElementById("side");
+	side.replaceChildren();
+	const h = document.createElement("h2");
+	h.textContent = `Design checks (${checks.length})`;
+	side.appendChild(h);
+	if (!checks.length) {
+		const ok = document.createElement("div");
+		ok.className = "ok";
+		ok.textContent = "Everything passes on this device.";
+		side.appendChild(ok);
+	}
+	const order = { fail: 0, warn: 1 };
+	for (const c of [...checks].sort((a, b) => order[a.level] - order[b.level])) {
+		const item = document.createElement("div");
+		item.className = `check ${c.level}`;
+		const title = document.createElement("b");
+		title.textContent = `${c.level === "fail" ? "Fail" : "Warn"} · ${c.rule}`;
+		const msg = document.createElement("div");
+		msg.textContent = c.message;
+		const path = document.createElement("div");
+		path.className = "path";
+		path.textContent = c.path;
+		item.append(title, msg, path);
+		item.onclick = () => {
+			c.el.classList.remove("flash");
+			void c.el.offsetWidth;
+			c.el.classList.add("flash");
+		};
+		side.appendChild(item);
+	}
+	const hint = document.createElement("div");
+	hint.className = "hint";
+	hint.textContent = "Sizing rules (RULES.md): scale instead of px offsets, ScaledSize strokes, TextScaled text, one UIScale per window; even padding and strokes of at least 1px are measured per device. Contrast: WCAG 2.2 (4.5:1 text, 3:1 large text) against the chosen backdrop. Tap targets: 44pt (Apple HIG), 64px on TV. Images show as placeholders unless mapped with sim.asset. Layout follows Roblox rules closely but not perfectly: confirm final polish in Studio.";
+	side.appendChild(hint);
+}
+
+// UI -------------------------
+
+const STORAGE = "bright-sim";
+function save_state() {
+	if (state.bare) return;
+	try { localStorage.setItem(STORAGE, JSON.stringify({ device: state.device, backdrop: state.backdrop, topbar: state.topbar, checks: state.checks, inspect: state.inspect, scene: state.scene, name: DATA.name })); } catch {}
+}
+function load_state() {
+	try {
+		const saved = JSON.parse(localStorage.getItem(STORAGE) || "null");
+		if (saved) {
+			const { name, ...rest } = saved;
+			if (name !== DATA.name) delete rest.scene;
+			Object.assign(state, rest);
+		}
+	} catch {}
+}
+
+function setup_ui() {
+	const scenes = document.getElementById("scenes");
+	DATA.scenes.forEach((s, i) => {
+		const b = document.createElement("button");
+		b.textContent = s.name;
+		b.onclick = () => { show({ scene: i }); sync_ui(); };
+		scenes.appendChild(b);
+	});
+	const select = document.getElementById("device-select");
+	for (const [key, d] of Object.entries(DEVICES)) select.add(new Option(d.label, key));
+	select.onchange = () => show({ device: select.value });
+	const backdrop = document.getElementById("backdrop-select");
+	backdrop.onchange = () => show({ backdrop: backdrop.value });
+	for (const name of ["topbar", "checks", "inspect"]) {
+		document.getElementById(`toggle-${name}`).onclick = () => { show({ [name]: !state[name] }); sync_ui(); };
+	}
+	window.addEventListener("resize", fit);
+	window.addEventListener("keydown", (e) => {
+		if (e.target.tagName === "SELECT") return;
+		const n = Number(e.key);
+		if (n >= 1 && n <= DATA.scenes.length) { show({ scene: n - 1 }); sync_ui(); }
+	});
+
+	const tip = document.getElementById("tip");
+	const screen = document.getElementById("screen");
+	screen.addEventListener("mousemove", (e) => {
+		if (!state.inspect) return;
+		const target = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.dataset && el.dataset.path && screen.contains(el));
+		document.querySelectorAll(".inspect-box").forEach((b) => b.remove());
+		if (!target) { tip.style.display = "none"; return; }
+		const dev = document.getElementById("device");
+		const zoom = dev.getBoundingClientRect().width / dev.offsetWidth;
+		const r = target.getBoundingClientRect(), d = dev.getBoundingClientRect();
+		const box = document.createElement("div");
+		box.className = "inspect-box";
+		Object.assign(box.style, { left: `${(r.left - d.left) / zoom}px`, top: `${(r.top - d.top) / zoom}px`, width: `${r.width / zoom}px`, height: `${r.height / zoom}px` });
+		dev.appendChild(box);
+		tip.textContent = `${target.dataset.cls}  ${target.dataset.path}\n${Math.round(r.width / zoom)} x ${Math.round(r.height / zoom)} px`;
+		tip.style.display = "block";
+		tip.style.left = `${Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)}px`;
+		tip.style.top = `${e.clientY + 16}px`;
+	});
+	screen.addEventListener("mouseleave", () => {
+		tip.style.display = "none";
+		document.querySelectorAll(".inspect-box").forEach((b) => b.remove());
+	});
+}
+
+function sync_ui() {
+	document.querySelectorAll("#scenes button").forEach((b, i) => b.setAttribute("aria-pressed", String(i === state.scene)));
+	document.getElementById("device-select").value = state.device;
+	document.getElementById("backdrop-select").value = state.backdrop;
+	for (const name of ["topbar", "checks", "inspect"]) document.getElementById(`toggle-${name}`).setAttribute("aria-pressed", String(state[name]));
+}
+
+const sim = { ready: false, checks: [], show, devices: DEVICES };
+window.sim = sim;
+
+// embedded fonts load lazily, but canvas text measuring needs them now
+Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready).then(() => {
+	load_state();
+	setup_ui();
+	sync_ui();
+	if (!DATA.scenes[state.scene]) state.scene = 0;
+	show();
+	sim.ready = true;
+});
+</script>
+</body>
+</html>

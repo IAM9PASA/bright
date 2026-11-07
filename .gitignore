@@ -1,3 +1,6 @@
 # wally installs these from wally.toml: run `wally install`
 Packages/
 sourcemap.json
+# ui simulator output and the vide copy it fetches
+sim/out/
+sim/.cache/

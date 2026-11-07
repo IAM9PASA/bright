@@ -1,7 +1,42 @@
 # Bright
 
-UI building blocks on top of [vide](https://github.com/centau/vide). Started from the playground `ui_kit` module.
-Change `src/theme.luau` to restyle everything built with it. All sizes are scale (no px, no UITextSizeConstraint).
+UI building blocks on top of [vide](https://github.com/centau/vide) that make any UI style easier to build and prettier by default.
+You write the screen once with `ui.window`, `ui.button`, `ui.item_card` and friends. The **style** decides how it looks: fonts, corners, outlines, header kind, button kind, glow, palettes.
+All sizes are scale: no px offsets, scaled strokes, scaled text. The rules are in [RULES.md](RULES.md), and `ui.lint(root)` checks them in Studio or in the simulator.
+
+## Styles
+
+| Style | Look | Good for |
+| --- | --- | --- |
+| `brainrot` (default) | navy glass, glossy studded header bars, 3D candy buttons, heavy outlined text | simulators, tycoons, meme games |
+| `clean` | white rounded windows, flat solid buttons, dark text | menus, settings, modern app-like UI |
+| `glass` | dark see-through windows, mint glow edges, glowing buttons | neon, script-hub, nightlife |
+| `scifi` | navy, cyan lines, square corners with bracket marks, outline buttons, uppercase | shooters, space, tech |
+| `fantasy` | wood and gold, parchment banner title, beveled buttons, serif text | RPG, adventure, quests |
+| `pastel` | cream, round everything, bubbly pill buttons, rounded font | pets, cafe, dress-up, cute games |
+
+```lua
+local bright = require(ReplicatedStorage.Packages.bright)   -- default style (src/theme.luau)
+local ui = bright.with(bright.styles.glass)                  -- or any style, several can live side by side
+```
+
+Make your own style from any of them. Only list what changes:
+
+```lua
+local candy_night = bright.extend(bright.styles.brainrot, {
+	surface = { color = Color3.fromHex("1A0B2E"), corner = UDim.new(0.04, 0) },
+	button = { studs = false, corner = UDim.new(0.5, 0) },
+	palette = { blue = { face = { Color3.fromHex("C9A8FF"), Color3.fromHex("8A4DFF") } } },
+})
+local ui = bright.with(candy_night)
+```
+
+Style settings (see `src/styles/brainrot.luau` for every key):
+- **Surface:** `surface` sets the window and card fill, transparency, outline, `corner`, optional `gradient`, `glow` and sci-fi `brackets`.
+- **Kinds:** `header.kind` is `bar`, `plain` or `banner`. `button.kind` is `candy`, `flat`, `outline` or `glow`. `button.studs` and `header.studs` turn the stud texture on or off.
+- **Text:** `text` sets `outline`, `drop` (dark copy under titles) and `upper` (uppercase). `font` sets the `title` and `body` fonts.
+- **Cards:** `card.rays` puts sunbursts behind items. Without it, items get a rarity glow and stripe.
+- **Colors:** `palette` sets the named colors (blue, green, red, gold, purple, pink, orange, amber, grey). Each has a dark `base`, an outline `stroke`, a `face` gradient, a `label` color and a `text` outline color. `text_gradient` sets the cash and rarity text.
 
 ## Use
 
@@ -14,13 +49,67 @@ bright = "iam9pasa/bright@0.1.0"
 ```lua
 local ui = require(ReplicatedStorage.Packages.bright)
 
-ui.panel {
-	Name = "main",
-	Size = UDim2.fromScale(1, 1),
-	Parent = frame,
-	ui.text { Text = "Inventory", style = "title", align = "left", Size = UDim2.fromScale(0.3, 0.05) },
-	ui.scroll_grid { Name = "list", Size = UDim2.fromScale(1, 0.8), cell = 0.155 },
+ui.window {
+	title = "Inventory",
+	icon = ui.theme.asset.icon.inventory,
+	palette = "blue",            -- blue, orange, gold, amber, green, red, purple, pink, grey
+	shape = "inventory",         -- standard, inventory, large, popup (reference proportions)
+	close = function() end,
+	Parent = screen_gui,
+
+	ui.scroll_grid { columns = 4, Size = UDim2.fromScale(0.65, 0.8), Position = UDim2.fromScale(0.02, 0.17),
+		ui.item_card { name = "Sharkalino", image = id, value = "$1.2K/s", rarity = "legendary" },
+	},
+	ui.button { text = "Equip", palette = "green", Size = UDim2.fromScale(0.25, 0.11) },
 }
 ```
 
-Full API: header comment of `src/init.luau`.
+Full API: header comment of `src/init.luau`. The pieces:
+- **Windows:** `window`, `header`, `card`, `panel`.
+- **Text:** `text` (styles `cash`, `legendary`, `epic`, `rare`, `common`, `gems`, `item`, `rainbow`), `title` (white over dark drop edge).
+- **Controls:** `button` (3D candy, `palette` and `disabled` can be vide sources), `close_button`, `icon_button`, `tab`, `input`, `hud_button`, `hit`.
+- **Content:** `item_card`, `sunburst`, `studs`, `progress`, `icon`.
+- **Layout:** `row`, `column`, `scroll_grid { columns }`, `scroll_list`, `padding`, `square`.
+- **Screen:** `device()`, `adaptive()`.
+
+Asset ids for the stud texture, sunburst and icons live in `theme.asset`. Replace them with your own game's ids.
+
+## Simulator: see the UI without Studio
+
+`sim/` runs the real bright + vide code on a fake Roblox (`sim/roblox.luau`) and draws it in a browser page.
+Each example runs once per device (phones, tablet, desktop, console), so code that checks the screen gets real answers.
+
+```sh
+rokit install                        # gets luau (rokit.toml)
+node sim/run.mjs                     # every example -> sim/out/<name>.html, open it in a browser
+node sim/run.mjs gallery --serve     # http://localhost:5173, rebuilds + reloads when you save
+node sim/run.mjs --shot              # pngs per device + design checks in the terminal (needs playwright)
+```
+
+Examples live in `sim/examples/`, one per style:
+
+| Example | Style | Shows |
+| --- | --- | --- |
+| `gallery` | inventory in all 6 styles (one scene each) | same screen code, only the style changes |
+| `styles` | all 6 styles side by side | tabs, progress, toggle, buttons, item card per style |
+| `store` | amber large window | pack cards (blue / pink / green), passes, sale price, robux buttons |
+| `upgrades` | gold | rows sized with `ui.ratio`, level bars, buy and maxed (grey) states |
+| `daily` | pink | 7-day grid, claimed / today / locked cells, reactive claim button |
+| `popups` | red and green popups | dimmed backdrop, confirm and reward, switching between scenes |
+| `themes` | one style, 4 palettes | only `palette` changes |
+
+`sim/shared/stand_ins.luau` maps the asset ids to local preview drawings. They are normal client code plus a `sim` global:
+
+```lua
+local screen = sim.screen("shop")            -- a ScreenGui in PlayerGui
+vide.mount(function() return ui.panel { ... } end, screen)
+sim.snapshot("default")                      -- one scene in the viewer
+sim.hover(button) sim.press(button) sim.click(button) sim.fire(instance, "Event", ...)
+sim.step(0.5)                                -- advance time: task.delay / task.wait / springs
+sim.asset("rbxassetid://123", "sim/assets/coin.png")   -- show a real image instead of a placeholder
+```
+
+The viewer has device presets with the Roblox top bar and notch safe areas, a game-world, dark or light backdrop, and an inspector (hover for the instance path and size).
+Its design checks flag low text contrast (WCAG 2.2), text under 12px on phones, tap targets under 44pt (64px on TV), and buttons under the top bar or a notch.
+Tweens jump to their end value, and images without `sim.asset` show as placeholders.
+The layout follows Roblox's rules closely but not perfectly, so give final polish a look in Studio.
