@@ -1,4 +1,5 @@
--- style: small popups over a dimmed screen. red "delete?" confirm, green "you got" reward
+-- style: small popups over a dimmed screen. red "delete?" confirm, green "you got" reward.
+-- each window has `open = source`, so it springs in and out (ui.presence) instead of popping
 -- node sim/run.mjs popups
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -32,7 +33,7 @@ local function confirm()
 		palette = "red",
 		shape = "popup",
 		close = function() open(nil) end,
-		Visible = function() return open() == "confirm" end,
+		open = function() return open() == "confirm" end,
 		Size = UDim2.fromScale(0.42, 0.5),
 		ZIndex = 10,
 		ui.adaptive { phone = 1.35 },
@@ -61,7 +62,7 @@ local function reward()
 		icon = ids.gift,
 		palette = "green",
 		shape = "popup",
-		Visible = function() return open() == "reward" end,
+		open = function() return open() == "reward" end,
 		Size = UDim2.fromScale(0.42, 0.5),
 		ZIndex = 10,
 		ui.adaptive { phone = 1.35 },
@@ -73,7 +74,8 @@ local function reward()
 			Position = UDim2.fromScale(0.5, 0.52),
 			Size = UDim2.fromScale(1, 0.6),
 			ZIndex = -1,
-			ui.sunburst { ImageColor3 = Color3.fromHex("A6FF01"), ImageTransparency = 0.2, Size = UDim2.fromScale(1.6, 1.6) },
+			-- slow spin; it stops on its own while the popup is closed (presence pauses loops)
+			ui.sunburst { ImageColor3 = Color3.fromHex("A6FF01"), ImageTransparency = 0.2, Size = UDim2.fromScale(1.6, 1.6), ui.motion.spin(20) },
 		},
 		ui.icon { Name = "Icon", Image = icon.lucky_block, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.48), Size = UDim2.fromScale(0.36, 0.38) },
 		ui.title { Name = "Amount", Text = "x3 Lucky Block", style = "rainbow", align = "center", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.71), Size = UDim2.fromScale(0.8, 0.13) },
@@ -87,8 +89,24 @@ vide.mount(function()
 	return { dim(), confirm(), reward() }
 end, screen)
 
+local function find(name)
+	return screen:FindFirstChild(name, true)
+end
+
 sim.snapshot("confirm delete")
-sim.hover(screen.Confirmation.Yes)
+sim.hover(find("Yes"))
 sim.snapshot("hover delete")
+
+-- switch popups: the confirm springs out while the reward springs in
 open("reward")
+sim.step(0.06)
+sim.snapshot("switching (60ms in)")
+sim.step(1)
+assert(screen.Confirmation.Visible == false, "closed presence should hide itself")
+assert(screen.Reward.Fade:FindFirstChild("Content") == nil and screen.Reward.Still:FindFirstChild("Content"), "settled content should leave the canvas")
 sim.snapshot("reward")
+
+open(nil)
+sim.step(0.08)
+assert(screen.Reward.Fade:FindFirstChild("Content"), "closing content should be back in the canvas")
+sim.snapshot("closing (80ms in)")

@@ -2,12 +2,13 @@
 -- scaled text, one layout UIScale per window. works anywhere:
 --   studio command bar: print(require(game.ReplicatedStorage.Packages.bright).lint(game.StarterGui.MyGui))
 --   sim/ runs it on every snapshot and lists the problems in the viewer
+-- rules: scale size / position / padding, scaled stroke / text, one ui scale, one scale per instance
 -- returns { { path, rule, level = "fail" | "warn", message } }
 
 -- VARIABLES -------------------------
 
 -- UIScales bright uses for hover / press / pop animation, they are not layout scaling
-local ANIMATION_SCALES = { press_scale = true, pop_scale = true }
+local ANIMATION_SCALES = { press_scale = true, pop_scale = true, presence_scale = true }
 
 local TEXT_CLASSES = { "TextLabel", "TextButton", "TextBox" }
 
@@ -61,6 +62,15 @@ local function lint(root: Instance)
 
 	local function check(instance: Instance)
 		local parent = instance.Parent
+
+		-- roblox applies only one UIScale per object, whatever the names, so extra ones silently do nothing
+		local scales = {}
+		for _, child in instance:GetChildren() do
+			if child:IsA("UIScale") then table.insert(scales, child.Name) end
+		end
+		if #scales > 1 then
+			add(instance, "fail", "one scale per instance", `{#scales} UIScales ({table.concat(scales, ", ")}), only one applies: wrap the content in a frame and put the second scale there`)
+		end
 
 		if instance:IsA("GuiObject") then
 			-- a layout in the parent decides position (list / grid) and size (grid), so those are ignored

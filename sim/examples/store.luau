@@ -89,7 +89,7 @@ local function pass(name: string, palette_name: string, title: string, image: st
 		LayoutOrder = order,
 		BackgroundColor3 = palette.base,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(0.315, 1),
+		Size = UDim2.fromScale(0.3, 1),
 		create "UIStroke" { Color = palette.stroke, Thickness = 0.04, StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize },
 		create "Frame" {
 			Name = "Main",
@@ -133,7 +133,6 @@ vide.mount(function()
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.559),
 			Size = UDim2.fromScale(1, 0.86),
-			gap = 0.025,
 			pack {
 				name = "StarterPack", order = 1, palette = "blue", title = "Starter Pack", desc = "BEST VALUE", was = "R$ 199", price = "R$ 99",
 				tint = Color3.fromHex("0091FF"),
@@ -144,7 +143,8 @@ vide.mount(function()
 				LayoutOrder = 2,
 				Size = UDim2.fromScale(0.95, 0),
 				ui.ratio(2.9),
-				ui.list_layout { direction = "row", gap = 0.027, align = "center" },
+				-- 0.04 of the row width is over twice a pass outline, so neighbours never touch
+				ui.list_layout { direction = "row", gap = 0.04, align = "center" },
 				pass("SellPrice", "green", "x2 Sell", ids.coin, "R$ 149", 1),
 				pass("Speed", "gold", "x2 Speed", ids.bolt, "R$ 99", 2),
 				pass("VIP", "pink", "VIP", ids.crown, "R$ 349", 3),

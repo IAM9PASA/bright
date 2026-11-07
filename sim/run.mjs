@@ -7,6 +7,7 @@
 //   node sim/run.mjs --shot               also save png screenshots + run design checks (needs playwright)
 //   node sim/run.mjs --serve              local server on :5173 that rebuilds + reloads on save
 //   node sim/run.mjs --device phone,desktop --shot
+//   node sim/run.mjs --tests              run sim/tests (lint fixtures, behaviour asserts), exit 1 on failure
 //   node sim/run.mjs --strict             exit 1 on any sizing-rule fail (RULES.md), for ci
 //
 // needs a `luau` binary: `rokit install` (rokit.toml) or set LUAU=/path/to/luau
@@ -21,7 +22,8 @@ import { fileURLToPath } from "node:url";
 const SIM = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(SIM);
 const OUT = path.join(SIM, "out");
-const EXAMPLES = path.join(SIM, "examples");
+// --tests runs the assertion scripts in sim/tests instead of the examples
+const EXAMPLES = path.join(SIM, process.argv.includes("--tests") ? "tests" : "examples");
 const VIDE_VERSION = "0.3.1";
 
 // sizes are roblox screen points. safe = notch / home bar insets. each example runs once per device
@@ -164,7 +166,8 @@ function run_once(luau, modules, example, name, device_name, print_logs) {
 	const stdout = result.stdout ?? "";
 	const at = stdout.lastIndexOf(MARK);
 	const logs = (at >= 0 ? stdout.slice(0, at) : stdout).trimEnd();
-	if (logs && print_logs) console.log(logs.split("\n").map((l) => `  [${name}] ${l}`).join("\n"));
+	// logs once per example, and always when a run fails so its prints explain the error
+	if (logs && (print_logs || result.status !== 0 || at < 0)) console.log(logs.split("\n").map((l) => `  [${name}] ${l}`).join("\n"));
 	if (result.status !== 0 || at < 0) {
 		console.error(`\n[sim] ${name} failed (${device_name}):\n${(result.stderr || "").trim() || "no output"}\n`);
 		return null;
@@ -235,7 +238,10 @@ function build_all() {
 		.filter((f) => names.length === 0 || names.includes(f.replace(/\.luau?$/, "")))
 		.map((f) => path.join(EXAMPLES, f));
 	if (examples.length === 0) fail(`no examples matched ${names.join(", ")} in sim/examples`);
-	return examples.map((e) => run_example(luau, modules, e)).filter(Boolean);
+	const builds = examples.map((e) => run_example(luau, modules, e));
+	// a crashed example (luau error, failed assert) fails the whole run, so ci catches it
+	build_all.failed = builds.filter((b) => !b).length;
+	return builds.filter(Boolean);
 }
 
 // SCREENSHOTS + CHECKS -------------------------
@@ -332,5 +338,5 @@ if (flag("serve")) {
 	let problems = rule_fails;
 	if (flag("shot")) problems += await shoot(builds);
 	if (flag("strict") && problems > 0) process.exit(1);
-	if (builds.length === 0) process.exit(1);
+	if (builds.length === 0 || build_all.failed > 0) process.exit(1);
 }

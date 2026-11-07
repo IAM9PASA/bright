@@ -1,10 +1,12 @@
 [package]
 name = "iam9pasa/bright"
-description = "UI building blocks on top of vide, themed like CSS variables"
+description = "Scale-only vide UI building blocks for Roblox, with swappable styles and a lint for sizing rules"
 version = "0.1.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
-exclude = ["Packages"]
+license = "MIT"
+# ship only the library: src/ plus the manifest and docs. the simulator, CI and editor skills stay out
+exclude = ["Packages", "sim", ".claude", ".github", "rokit.toml", "sourcemap.json"]
 
 [dependencies]
 vide = "centau/vide@0.3.1"

@@ -1,0 +1,32 @@
+# runs every example and test on a fake roblox runtime (no studio, no browser), so a crash like
+# an invalid enum, a failed assert or a sizing-rule fail (RULES.md) never reaches main
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # tools come from rokit.toml (luau, wally)
+      - name: Install rokit tools
+        run: |
+          curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Examples (crash + sizing rules)
+        run: node sim/run.mjs --strict
+
+      - name: Tests (lint fixtures, behaviour)
+        run: node sim/run.mjs --tests --strict

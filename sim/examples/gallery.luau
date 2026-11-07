@@ -60,15 +60,11 @@ local function inventory(ui)
 
 	return {
 		-- left hud column, like Buttons.Left
-		ui.column {
+		ui.hud_column {
 			Name = "Buttons",
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.fromScale(0.012, 0.5),
-			Size = UDim2.fromScale(0.07, 0.5),
-			gap = 0.03,
-			ui.hud_button { Name = "Store", text = "Store", image = icon.store, notify = true, LayoutOrder = 1, Size = UDim2.fromScale(1, 0.3) },
-			ui.hud_button { Name = "Bag", text = "Bag", image = icon.inventory, LayoutOrder = 2, Size = UDim2.fromScale(1, 0.3) },
-			ui.hud_button { Name = "Lucky", text = "Lucky", image = icon.lucky_block, LayoutOrder = 3, Size = UDim2.fromScale(1, 0.3) },
+			ui.hud_button { Name = "Store", text = "Store", image = icon.store, notify = true, LayoutOrder = 1 },
+			ui.hud_button { Name = "Bag", text = "Bag", image = icon.inventory, LayoutOrder = 2 },
+			ui.hud_button { Name = "Lucky", text = "Lucky", image = icon.lucky_block, LayoutOrder = 3 },
 		},
 
 		ui.window {

@@ -9,7 +9,9 @@
 -- ui.extend(base, { surface = { corner = UDim.new(0.1, 0) } })   make your own style from another one
 --
 -- WINDOWS
--- ui.window { title, icon, palette, shape = "standard" | "inventory" | "large" | "popup", close }
+-- ui.window { title, icon, palette, shape = "standard" | "inventory" | "large" | "popup", close, open }
+--   open = source(bool) wraps the window in ui.presence (spring scale + fade in and out)
+-- ui.presence { open, scale_from = 0.9, fade = true }   open / close transition for any children
 -- ui.header { title, icon, palette, close }  the header alone (bar / plain / banner, from the style)
 -- ui.card { tile = false, selected }         surface card, tile = inset
 -- ui.panel                                    plain surface with the window outline
@@ -18,19 +20,27 @@
 -- ui.text "hi" / ui.text { style, align, stroke }   label in the style's body font
 --   style = nil | "dim" | "cash" | "legendary" | "epic" | "rare" | "common" | "gems" | "item" | "rainbow"
 -- ui.title { Text, align, stroke, style }    title font (+ drop edge when the style has one)
+-- ui.counter { value, format, style, time }  number that rolls to its new value (source(number))
 --
 -- CONTROLS
--- ui.button { text, image, palette, amount, disabled }   candy / flat / outline / glow, from the style
+-- ui.button { text, image, palette, amount, disabled, locked }   candy / flat / outline / glow, from the style
+--   disabled = grey + no input: the action does not apply right now (maxed, already claimed)
+--   locked   = grey but clickable: shakes and skips Activated (can't afford, needs a level). bool or source
 -- ui.close_button {} / ui.icon_button { image, palette }
 -- ui.tab { text, active, palette }           palette when active, grey when not (active = bool or source)
 -- ui.input { PlaceholderText }               inset textbox
 -- ui.toggle { on }                           on/off switch, on = bool or vide source (click flips a source)
--- ui.hud_button { text, image, notify }     square side button with caption
+-- ui.hud_button { text, image, notify }     square side button with caption. pass your own
+--   UIAspectRatioConstraint (ui.square(ratio)) to change the shape, it replaces the default square
+-- ui.hud_column { side = "left", cell = 0.28, gap = 0.03 }   screen-edge column the hud buttons stack in
 -- ui.hit { hover = true, ... }                invisible full-size "button", hover pops the parent
 --
 -- CONTENT
 -- ui.item_card { name, image, value, rarity, sunburst, selected }
 -- ui.sunburst { ImageColor3 } / ui.studs(tile, colors) / ui.progress { value, text } / ui.icon { Image }
+-- ui.hex { color }                           pointy-top hexagon (3 rotated bands, or theme.asset.hex image)
+-- ui.hex_stack(palette, props?)              border + rim + raised face hex, palette = name or source of one
+-- ui.hex_grid { radius, cell = function(q, r) -> Instance, gap = 0.94 }   axial hex grid
 --
 -- LAYOUT
 -- ui.box / ui.row / ui.column { gap = 0.02, align = "center", cross = "center", fill = true }
@@ -42,6 +52,7 @@
 -- SCREEN + RULES
 -- ui.device() / ui.adaptive(scales?) / ui.pop(gui, from?) / ui.pop_on(gui, property, from?, watch?)
 -- ui.lint(root)                               list sizing-rule breaks, see RULES.md
+-- ui.motion.loop / bob / spin / pause / tween / pop / shake   idle loops and feedback (src/motion.luau)
 
 -- SERVICES -------------------------
 
@@ -53,6 +64,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local vide = require(script.Parent.vide)
 local lint = require(script.lint)
+local motion = require(script.motion)
 local style = require(script.style)
 
 
@@ -60,14 +72,16 @@ local style = require(script.style)
 
 local create = vide.create
 
-local styles = {
-	brainrot = require(script.styles.brainrot),
-	clean = require(script.styles.clean),
-	glass = require(script.styles.glass),
-	scifi = require(script.styles.scifi),
-	fantasy = require(script.styles.fantasy),
-	pastel = require(script.styles.pastel),
-}
+-- styles load on first use, so one broken style only breaks the code that picks it
+local styles = setmetatable({}, {
+	__index = function(self, name)
+		local module = script.styles:FindFirstChild(name)
+		if not module then return nil end
+		local loaded = require(module)
+		rawset(self, name, loaded)
+		return loaded
+	end,
+})
 
 local alignments = {
 	start = { Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top },
@@ -83,6 +97,92 @@ local text_alignments = {
 
 -- UIScales bright uses for animation (lint ignores these names)
 local PRESS_SCALE, POP_SCALE = "press_scale", "pop_scale"
+
+
+-- PROPS -------------------------
+-- types for editor autocomplete and typo checks (a misspelt `palete` is flagged). children go in the
+-- array part; roblox properties not listed here still work, these change nothing at runtime
+
+type Source<T> = () -> T
+type Maybe<T> = T | Source<T>
+
+export type GuiProps = {
+	Name: string?,
+	Parent: Instance?,
+	Size: Maybe<UDim2>?,
+	Position: Maybe<UDim2>?,
+	AnchorPoint: Maybe<Vector2>?,
+	LayoutOrder: number?,
+	ZIndex: number?,
+	Visible: Maybe<boolean>?,
+	Rotation: Maybe<number>?,
+	[number]: any,
+}
+
+export type WindowProps = GuiProps & {
+	title: Maybe<string>?,
+	icon: string?,
+	palette: string?,
+	shape: ("standard" | "inventory" | "large" | "popup")?,
+	close: (boolean | () -> ())?,
+	open: Source<boolean>?,
+}
+
+export type ButtonProps = GuiProps & {
+	text: Maybe<string>?,
+	image: string?,
+	palette: Maybe<string>?,
+	amount: Maybe<string>?,
+	disabled: Maybe<boolean>?,
+	locked: Maybe<boolean>?,
+	studs: UDim2?,
+	Activated: (() -> ())?,
+}
+
+export type TextProps = GuiProps & {
+	Text: Maybe<string>?,
+	style: ("dim" | "cash" | "legendary" | "epic" | "rare" | "common" | "gems" | "item" | "rainbow")?,
+	align: ("left" | "center" | "right")?,
+	stroke: Color3?,
+}
+
+export type TitleProps = TextProps & { color: Color3? }
+
+export type ItemCardProps = GuiProps & {
+	name: Maybe<string>?,
+	image: Maybe<string>?,
+	value: Maybe<string>?,
+	rarity: string?,
+	sunburst: Color3?,
+	selected: Maybe<boolean>?,
+	Activated: (() -> ())?,
+}
+
+export type ScrollGridProps = GuiProps & {
+	columns: number?,
+	ratio: number?,
+	gap_x: number?,
+	gap_y: number?,
+	cell: number?,
+}
+
+export type PresenceProps = GuiProps & {
+	open: Source<boolean>,
+	scale_from: number?,
+	fade: boolean?,
+}
+
+export type CounterProps = TextProps & {
+	value: Source<number>,
+	format: ((number) -> string)?,
+	time: number?,
+}
+
+export type HexGridProps = GuiProps & {
+	radius: number?,
+	cell: (q: number, r: number) -> Instance,
+	gap: number?,
+}
 
 
 -- FUNCTIONS -------------------------
@@ -142,6 +242,16 @@ local function read(value)
 	return value
 end
 
+-- true when a props table already holds an aspect constraint (as a child instance)
+local function has_aspect(props): boolean
+	for key, value in props do
+		if type(key) == "number" and typeof(value) == "Instance" and value:IsA("UIAspectRatioConstraint") then
+			return true
+		end
+	end
+	return false
+end
+
 local function center(size: UDim2, y: number?)
 	return { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, y or 0.5), Size = size }
 end
@@ -153,6 +263,7 @@ local function build(theme)
 	ui.styles = styles
 	ui.extend = style.extend
 	ui.lint = lint
+	ui.motion = motion
 	ui.sequence = sequence
 	ui.with = build
 
@@ -312,7 +423,7 @@ local function build(theme)
 		return theme.text_gradient[name]
 	end
 
-	function ui.text(props)
+	function ui.text(props: TextProps | string)
 		if type(props) == "string" then
 			props = { Text = props }
 		end
@@ -339,7 +450,7 @@ local function build(theme)
 	end
 
 	-- title font. styles with a drop edge put a dark copy a little lower
-	function ui.title(props)
+	function ui.title(props: TitleProps)
 		local text = cased(take(props, "Text"))
 		local align = take(props, "align") or "left"
 		local outline = take(props, "stroke") or theme.color.outline
@@ -376,6 +487,41 @@ local function build(theme)
 			})
 		end
 		return create "Frame" (props)
+	end
+
+	-- 1234567 -> "1,234,567"
+	local function thousands(n: number): string
+		local whole = tostring(math.round(n))
+		local sign, digits = whole:match("^(%-?)(%d+)$")
+		local grouped = (digits :: string):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+		return (sign or "") .. grouped
+	end
+	ui.thousands = thousands
+
+	-- rolls instead of jumping: a NumberValue tweens to each new value (quart out) and the label follows
+	function ui.counter(props: CounterProps)
+		local value = take(props, "value")
+		local format = take(props, "format") or thousands
+		local time = take(props, "time") or 0.6
+		assert(type(value) == "function", "ui.counter: value must be a vide source")
+
+		local shown = Instance.new("NumberValue")
+		shown.Value = value()
+		props.Text = format(shown.Value)
+		local label = ui.text(props)
+		shown.Parent = label
+
+		shown:GetPropertyChangedSignal("Value"):Connect(function()
+			label.Text = cased(format(shown.Value)) :: any
+		end)
+		local tween_info = TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+		vide.effect(function()
+			local target = value()
+			if target ~= shown.Value then
+				TweenService:Create(shown, tween_info, { Value = target }):Play()
+			end
+		end)
+		return label
 	end
 
 	-- MOTION -------------------------
@@ -492,10 +638,11 @@ local function build(theme)
 
 	-- one api, four looks: candy (rim + glossy face), flat (one fill), outline (see-through + edge),
 	-- glow (flat + halo). palette and disabled can be vide sources
-	function ui.button(props)
+	function ui.button(props: ButtonProps)
 		local text = cased(take(props, "text"))
 		local amount = take(props, "amount")
 		local disabled = take(props, "disabled")
+		local locked = take(props, "locked")
 		local studs = take(props, "studs") or theme.studs.button
 		local image = take(props, "image")
 		local palette = take(props, "palette") or theme.accent
@@ -503,10 +650,23 @@ local function build(theme)
 
 		-- disabled buttons turn grey and stop taking input
 		local effective = palette
-		if disabled ~= nil then
+		if disabled ~= nil or locked ~= nil then
 			effective = function()
-				if read(disabled) then return "grey" end
+				if read(disabled) or read(locked) then return "grey" end
 				return read(palette)
+			end
+		end
+
+		-- locked buttons still take the click so the player gets a "no" instead of nothing
+		local button
+		if locked ~= nil then
+			local on_activated = take(props, "Activated")
+			props.Activated = function(...)
+				if read(locked) then
+					motion.shake(button)
+					return
+				end
+				if on_activated then on_activated(...) end
 			end
 		end
 		local function paint(getter)
@@ -591,7 +751,7 @@ local function build(theme)
 			})
 		end
 
-		local button = create "TextButton" (props)
+		button = create "TextButton" (props)
 		bind_press(button, button, face, if face then label else nil)
 		return button
 	end
@@ -708,7 +868,10 @@ local function build(theme)
 		if theme.surface.gradient then
 			table.insert(props, ui.gradient(theme.surface.gradient))
 		end
-		table.insert(props, ui.square())
+		-- square by default, but a UIAspectRatioConstraint passed in wins (two would fight)
+		if not has_aspect(props) then
+			table.insert(props, ui.square())
+		end
 		table.insert(props, corner(if theme.card.corner.Scale > 0 then theme.card.corner else UDim.new(0.015, 0)))
 		table.insert(props, stroke(theme.surface.stroke, math.max(theme.stroke.card, 0.02), theme.surface.stroke_transparency))
 		table.insert(props, ui.icon(defaults(center(UDim2.fromScale(0.68, 0.68), 0.42), { Name = "Icon", Image = image, ZIndex = 2 })))
@@ -745,6 +908,29 @@ local function build(theme)
 		local button = create "TextButton" (props)
 		bind_press(button, button, nil, nil)
 		return button
+	end
+
+	-- left (or right) screen edge, centered vertically. each button child gets an even share of the
+	-- height (cell) and stacks by LayoutOrder, so side buttons line up on every screen
+	function ui.hud_column(props)
+		local side = take(props, "side") or "left"
+		local cell = take(props, "cell") or 0.28
+		local gap = take(props, "gap") or 0.03
+		local right = side == "right"
+
+		for key, child in props do
+			if type(key) == "number" and typeof(child) == "Instance" and child:IsA("GuiObject") then
+				child.Size = UDim2.fromScale(1, cell)
+			end
+		end
+		defaults(props, {
+			Name = "Hud",
+			AnchorPoint = Vector2.new(if right then 1 else 0, 0.5),
+			Position = UDim2.fromScale(if right then 0.988 else 0.012, 0.5),
+			Size = UDim2.fromScale(0.07, 0.56),
+		})
+		table.insert(props, ui.list_layout { direction = "column", gap = gap, align = "center", cross = "center" })
+		return ui.box(props)
 	end
 
 	-- HEADER -------------------------
@@ -870,8 +1056,88 @@ local function build(theme)
 		return create "Frame" (props)
 	end
 
+	-- open / close transition. a spring drives one UIScale on the outer frame; children fade inside a
+	-- CanvasGroup only while moving, then sit in a plain frame so idle animations don't re-render the
+	-- canvas texture every frame. closed = invisible = no input, no cost
+	function ui.presence(props: PresenceProps)
+		local open = take(props, "open")
+		local scale_from = take(props, "scale_from") or 0.9
+		local fade = take(props, "fade")
+		if fade == nil then fade = true end
+		assert(type(open) == "function", "ui.presence: open must be a vide source")
+
+		local progress = vide.spring(function() return if open() then 1 else 0 end, 0.3, 0.75)
+
+		-- everything in the array part becomes content
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+
+		local content = create "Frame" { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), children }
+		local canvas = create "CanvasGroup" {
+			Name = "Fade",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			GroupTransparency = function() return 1 - math.clamp(progress(), 0, 1) end,
+		}
+		local still = create "Frame" { Name = "Still", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }
+
+		vide.effect(function()
+			local settled = open() and math.abs(progress() - 1) < 0.003
+			local home = if settled or not fade then still else canvas
+			if content.Parent ~= home then content.Parent = home end
+		end)
+
+		defaults(props, {
+			Name = "Presence",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Visible = function() return open() or progress() > 0.01 end,
+		})
+		table.insert(props, create "UIScale" {
+			Name = "presence_scale",
+			Scale = function() return scale_from + (1 - scale_from) * progress() end,
+		})
+		table.insert(props, canvas)
+		table.insert(props, still)
+		local frame = create "Frame" (props)
+
+		-- idle loops under a closed presence stop running
+		local was_closed
+		vide.effect(function()
+			local closed = not open() and progress() <= 0.01
+			if closed ~= was_closed then
+				was_closed = closed
+				motion.pause(frame, closed)
+			end
+		end)
+		return frame
+	end
+
 	-- shape picks the reference window proportions, the window keeps them on every screen
-	function ui.window(props)
+	function ui.window(props: WindowProps)
+		local open = take(props, "open")
+		if open ~= nil then
+			-- the presence takes the window's place and box, the window fills it
+			local outer = {
+				open = open,
+				Name = take(props, "Name") or "Window",
+				AnchorPoint = take(props, "AnchorPoint") or Vector2.new(0.5, 0.5),
+				Position = take(props, "Position") or UDim2.fromScale(0.5, 0.5),
+				Size = take(props, "Size") or UDim2.fromScale(0.6, 0.7),
+				ZIndex = take(props, "ZIndex"),
+				LayoutOrder = take(props, "LayoutOrder"),
+				Parent = take(props, "Parent"),
+			}
+			props.Name = "Window"
+			props.Size = UDim2.fromScale(1, 1)
+			table.insert(outer, ui.window(props))
+			return ui.presence(outer)
+		end
 		local title = take(props, "title")
 		local icon = take(props, "icon")
 		local palette = take(props, "palette") or theme.accent
@@ -940,7 +1206,7 @@ local function build(theme)
 	end
 
 	-- a grid cell: icon, name colored by rarity, value top right. rays behind it, or a rarity stripe
-	function ui.item_card(props)
+	function ui.item_card(props: ItemCardProps)
 		local name = take(props, "name")
 		local image = take(props, "image")
 		local value = take(props, "value")
@@ -1070,6 +1336,123 @@ local function build(theme)
 		return create "Frame" (props)
 	end
 
+	-- HEX -------------------------
+
+	local SQRT3 = math.sqrt(3)
+
+	-- pointy-top hexagon: a w x h/2 band rotated 0 / 60 / -60 inside a box of aspect sqrt(3)/2 covers
+	-- exactly a hex. a style can set theme.asset.hex (white hex image) to get one image with a gradient
+	-- instead. color = Color3 or source
+	function ui.hex(props)
+		local color = take(props, "color") or theme.surface.color
+		local transparency = take(props, "transparency") or 0
+		local gradient = take(props, "gradient")
+
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+
+		defaults(props, { BackgroundTransparency = 1, BorderSizePixel = 0 })
+		table.insert(props, create "UIAspectRatioConstraint" { AspectRatio = SQRT3 / 2 })
+		if theme.asset.hex then
+			table.insert(props, create "ImageLabel" {
+				Name = "Shape",
+				Image = theme.asset.hex,
+				ImageColor3 = color,
+				ImageTransparency = transparency,
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				gradient and ui.gradient(gradient) or nil,
+			})
+		else
+			for _, angle in { 0, 60, -60 } do
+				table.insert(props, create "Frame" {
+					Name = "Band",
+					BackgroundColor3 = color,
+					BackgroundTransparency = transparency,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromScale(1, 0.5),
+					Rotation = angle,
+				})
+			end
+		end
+		-- content goes over the shape
+		table.insert(props, create "Frame" { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, children })
+		return create "Frame" (props)
+	end
+
+	-- candy bevel as hexes: dark border, base rim peeking out below, raised face on top.
+	-- the three colors are worked out once per palette change, not once per band
+	function ui.hex_stack(palette, props)
+		props = props or {}
+		local colors = map(palette, function(name)
+			local p = get_palette(name)
+			return { border = p.stroke, rim = p.base, face = p.face[1]:Lerp(p.face[2], 0.55) }
+		end)
+		local derived = if type(colors) == "function" then vide.derive(colors) else nil
+		local function color_of(key)
+			if derived then return function() return derived()[key] end end
+			return colors[key]
+		end
+
+		local children = {}
+		for key, value in props do
+			if type(key) == "number" then
+				children[key] = value
+				props[key] = nil
+			end
+		end
+		defaults(props, { Name = "HexStack", Size = UDim2.fromScale(1, 1) })
+		table.insert(props, ui.hex { Name = "Border", color = color_of("border"), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1) })
+		table.insert(props, ui.hex { Name = "Rim", color = color_of("rim"), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53), Size = UDim2.fromScale(0.88, 0.88) })
+		table.insert(props, ui.hex {
+			Name = "Face",
+			color = color_of("face"),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.47),
+			Size = UDim2.fromScale(0.84, 0.84),
+			ZIndex = 2,
+			children,
+		})
+		return ui.hex(props)
+	end
+
+	-- axial coordinates (q, r), pointy-top. the box keeps the aspect of the whole grid, cells sit at
+	-- `gap` of their slot so the borders don't touch. cell(q, r) returns an instance sized 1 x 1
+	function ui.hex_grid(props: HexGridProps)
+		local radius = take(props, "radius") or 2
+		local cell = take(props, "cell")
+		local gap = take(props, "gap") or 0.94
+		assert(type(cell) == "function", "ui.hex_grid: cell must be a function(q, r)")
+
+		-- in units of the hex circumradius
+		local width = SQRT3 * (2 * radius + 1)
+		local height = 1.5 * 2 * radius + 2
+
+		defaults(props, { Name = "HexGrid", BackgroundTransparency = 1, BorderSizePixel = 0 })
+		table.insert(props, create "UIAspectRatioConstraint" { AspectRatio = width / height })
+		for q = -radius, radius do
+			for r = math.max(-radius, -q - radius), math.min(radius, -q + radius) do
+				local slot = create "Frame" {
+					Name = `hex_{q}_{r}`,
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5 + SQRT3 * (q + r / 2) / width, 0.5 + 1.5 * r / height),
+					Size = UDim2.fromScale(SQRT3 / width * gap, 2 / height * gap),
+					cell(q, r),
+				}
+				table.insert(props, slot)
+			end
+		end
+		return create "Frame" (props)
+	end
+
 	-- LAYOUT -------------------------
 
 	function ui.list_layout(props)
@@ -1119,9 +1502,63 @@ local function build(theme)
 		})
 	end
 
+	-- a gap whose height is a share of the list's width: spacer frames keep the same gap at any item count
+	local function spacer(name: string, share: number, order: number)
+		return create "Frame" {
+			Name = name,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			LayoutOrder = order,
+			Size = UDim2.fromScale(1, 0),
+			ui.ratio(1 / math.max(share, 1e-4)),
+		}
+	end
+
+	-- layout padding in a scrolling frame is a share of the canvas, which grows with content. for
+	-- children that come and go at runtime, recompute the padding scale from the canvas so the gap
+	-- stays `share` of the width (still scale, never px)
+	local function keep_gap(frame: ScrollingFrame, layout: UIGridStyleLayout, share_x: number, share_y: number)
+		local function update()
+			local canvas = frame.AbsoluteCanvasSize
+			if not canvas or canvas.Y <= 0 then return end
+			local y = share_y * frame.AbsoluteWindowSize.X / canvas.Y
+			if layout:IsA("UIListLayout") then
+				layout.Padding = UDim.new(y, 0)
+			elseif layout:IsA("UIGridLayout") then
+				layout.CellPadding = UDim2.fromScale(share_x, y)
+			end
+		end
+		frame:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(update)
+		update()
+	end
+
+	-- static children: instances, nested tables of instances. functions (vide sources of children)
+	-- make the list dynamic. vide actions are left alone
+	local function split_children(props)
+		local items, dynamic = {}, false
+		local function collect(value)
+			if typeof(value) == "Instance" then
+				table.insert(items, value)
+			elseif type(value) == "function" then
+				dynamic = true
+			elseif type(value) == "table" and value.callback == nil then
+				for _, item in value do collect(item) end
+			end
+		end
+		for key, value in props do
+			if type(key) == "number" and (typeof(value) == "Instance" or (type(value) == "table" and value.callback == nil)) then
+				collect(value)
+				props[key] = nil
+			elseif type(key) == "number" and type(value) == "function" then
+				dynamic = true
+			end
+		end
+		return items, dynamic
+	end
+
 	-- inside a scrolling frame scale follows the canvas, and an automatic canvas grows with its content,
 	-- so cells are sized from the width only. ratio = cell width / height
-	function ui.scroll_grid(props)
+	function ui.scroll_grid(props: ScrollGridProps)
 		local columns = take(props, "columns") or 4
 		local ratio = take(props, "ratio") or 1
 		local gap_x = take(props, "gap_x") or 0.027
@@ -1144,16 +1581,50 @@ local function build(theme)
 		-- strokes are drawn outside each cell, padding keeps the edge ones from being clipped.
 		-- y is a bit bigger than x so it looks even on the usual 1.4 - 2:1 grid areas
 		table.insert(props, ui.padding(0.01, 0.015))
-		return create "ScrollingFrame" (props)
+		local frame = create "ScrollingFrame" (props)
+		-- CellPadding y is a share of the growing canvas: keep it a share of the width instead
+		keep_gap(frame, frame:FindFirstChildWhichIsA("UIGridLayout") :: any, gap_x, gap_y)
+		return frame
 	end
 
-	-- vertical list of cards. the spacers keep the first and last card off the edges
+	-- vertical list of cards. gap = share of the list width between cards, the same at any item count.
+	-- static children are reordered 2, 4, 6... (same order) with a spacer between each pair
 	function ui.scroll_list(props)
+		-- 0.04 of the width is over twice a card outline at the usual 4-6:1 row shapes, so outlines
+		-- of neighbours never touch (theme.stroke.card is a share of the card's short side)
 		local gap = take(props, "gap") or 0.04
 		scroller(props)
-		table.insert(props, ui.list_layout { direction = "column", gap = gap, cross = "center" })
-		table.insert(props, ui.box { Name = "Top", LayoutOrder = -1e6, Size = UDim2.fromScale(1, 0.005) })
-		table.insert(props, ui.box { Name = "Bottom", LayoutOrder = 1e6, Size = UDim2.fromScale(1, 0.025) })
+		local items, dynamic = split_children(props)
+
+		if dynamic then
+			table.insert(props, ui.list_layout { direction = "column", gap = 0, cross = "center" })
+			for _, item in items do table.insert(props, item) end
+			local frame = create "ScrollingFrame" (props)
+			keep_gap(frame, frame:FindFirstChildWhichIsA("UIListLayout") :: any, 0, gap)
+			return frame
+		end
+
+		local indexed = {}
+		for index, item in items do
+			table.insert(indexed, { item = item, index = index, order = if item:IsA("GuiObject") then item.LayoutOrder else 0 })
+		end
+		table.sort(indexed, function(a, b)
+			if a.order ~= b.order then return a.order < b.order end
+			return a.index < b.index
+		end)
+
+		table.insert(props, ui.list_layout { direction = "column", gap = 0, cross = "center" })
+		table.insert(props, spacer("Top", gap / 2, 0))
+		for position, entry in indexed do
+			if entry.item:IsA("GuiObject") then
+				entry.item.LayoutOrder = position * 2
+				if position > 1 then
+					table.insert(props, spacer("Gap", gap, position * 2 - 1))
+				end
+			end
+			table.insert(props, entry.item)
+		end
+		table.insert(props, spacer("Bottom", gap, #indexed * 2 + 1))
 		return create "ScrollingFrame" (props)
 	end
 
