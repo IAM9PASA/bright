@@ -1402,6 +1402,60 @@ local function build(theme)
 		})
 	end
 
+	-- a gap whose height is a share of the list's width: spacer frames keep the same gap at any item count
+	local function spacer(name: string, share: number, order: number)
+		return create "Frame" {
+			Name = name,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			LayoutOrder = order,
+			Size = UDim2.fromScale(1, 0),
+			ui.ratio(1 / math.max(share, 1e-4)),
+		}
+	end
+
+	-- layout padding in a scrolling frame is a share of the canvas, which grows with content. for
+	-- children that come and go at runtime, recompute the padding scale from the canvas so the gap
+	-- stays `share` of the width (still scale, never px)
+	local function keep_gap(frame: ScrollingFrame, layout: UIGridStyleLayout, share_x: number, share_y: number)
+		local function update()
+			local canvas = frame.AbsoluteCanvasSize
+			if not canvas or canvas.Y <= 0 then return end
+			local y = share_y * frame.AbsoluteWindowSize.X / canvas.Y
+			if layout:IsA("UIListLayout") then
+				layout.Padding = UDim.new(y, 0)
+			elseif layout:IsA("UIGridLayout") then
+				layout.CellPadding = UDim2.fromScale(share_x, y)
+			end
+		end
+		frame:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(update)
+		update()
+	end
+
+	-- static children: instances, nested tables of instances. functions (vide sources of children)
+	-- make the list dynamic. vide actions are left alone
+	local function split_children(props)
+		local items, dynamic = {}, false
+		local function collect(value)
+			if typeof(value) == "Instance" then
+				table.insert(items, value)
+			elseif type(value) == "function" then
+				dynamic = true
+			elseif type(value) == "table" and value.callback == nil then
+				for _, item in value do collect(item) end
+			end
+		end
+		for key, value in props do
+			if type(key) == "number" and (typeof(value) == "Instance" or (type(value) == "table" and value.callback == nil)) then
+				collect(value)
+				props[key] = nil
+			elseif type(key) == "number" and type(value) == "function" then
+				dynamic = true
+			end
+		end
+		return items, dynamic
+	end
+
 	-- inside a scrolling frame scale follows the canvas, and an automatic canvas grows with its content,
 	-- so cells are sized from the width only. ratio = cell width / height
 	function ui.scroll_grid(props)
@@ -1427,16 +1481,50 @@ local function build(theme)
 		-- strokes are drawn outside each cell, padding keeps the edge ones from being clipped.
 		-- y is a bit bigger than x so it looks even on the usual 1.4 - 2:1 grid areas
 		table.insert(props, ui.padding(0.01, 0.015))
-		return create "ScrollingFrame" (props)
+		local frame = create "ScrollingFrame" (props)
+		-- CellPadding y is a share of the growing canvas: keep it a share of the width instead
+		keep_gap(frame, frame:FindFirstChildWhichIsA("UIGridLayout") :: any, gap_x, gap_y)
+		return frame
 	end
 
-	-- vertical list of cards. the spacers keep the first and last card off the edges
+	-- vertical list of cards. gap = share of the list width between cards, the same at any item count.
+	-- static children are reordered 2, 4, 6... (same order) with a spacer between each pair
 	function ui.scroll_list(props)
+		-- 0.04 of the width is over twice a card outline at the usual 4-6:1 row shapes, so outlines
+		-- of neighbours never touch (theme.stroke.card is a share of the card's short side)
 		local gap = take(props, "gap") or 0.04
 		scroller(props)
-		table.insert(props, ui.list_layout { direction = "column", gap = gap, cross = "center" })
-		table.insert(props, ui.box { Name = "Top", LayoutOrder = -1e6, Size = UDim2.fromScale(1, 0.005) })
-		table.insert(props, ui.box { Name = "Bottom", LayoutOrder = 1e6, Size = UDim2.fromScale(1, 0.025) })
+		local items, dynamic = split_children(props)
+
+		if dynamic then
+			table.insert(props, ui.list_layout { direction = "column", gap = 0, cross = "center" })
+			for _, item in items do table.insert(props, item) end
+			local frame = create "ScrollingFrame" (props)
+			keep_gap(frame, frame:FindFirstChildWhichIsA("UIListLayout") :: any, 0, gap)
+			return frame
+		end
+
+		local indexed = {}
+		for index, item in items do
+			table.insert(indexed, { item = item, index = index, order = if item:IsA("GuiObject") then item.LayoutOrder else 0 })
+		end
+		table.sort(indexed, function(a, b)
+			if a.order ~= b.order then return a.order < b.order end
+			return a.index < b.index
+		end)
+
+		table.insert(props, ui.list_layout { direction = "column", gap = 0, cross = "center" })
+		table.insert(props, spacer("Top", gap / 2, 0))
+		for position, entry in indexed do
+			if entry.item:IsA("GuiObject") then
+				entry.item.LayoutOrder = position * 2
+				if position > 1 then
+					table.insert(props, spacer("Gap", gap, position * 2 - 1))
+				end
+			end
+			table.insert(props, entry.item)
+		end
+		table.insert(props, spacer("Bottom", gap, #indexed * 2 + 1))
 		return create "ScrollingFrame" (props)
 	end
 
