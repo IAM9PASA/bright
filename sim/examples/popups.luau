@@ -74,7 +74,8 @@ local function reward()
 			Position = UDim2.fromScale(0.5, 0.52),
 			Size = UDim2.fromScale(1, 0.6),
 			ZIndex = -1,
-			ui.sunburst { ImageColor3 = Color3.fromHex("A6FF01"), ImageTransparency = 0.2, Size = UDim2.fromScale(1.6, 1.6) },
+			-- slow spin; it stops on its own while the popup is closed (presence pauses loops)
+			ui.sunburst { ImageColor3 = Color3.fromHex("A6FF01"), ImageTransparency = 0.2, Size = UDim2.fromScale(1.6, 1.6), ui.motion.spin(20) },
 		},
 		ui.icon { Name = "Icon", Image = icon.lucky_block, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.48), Size = UDim2.fromScale(0.36, 0.38) },
 		ui.title { Name = "Amount", Text = "x3 Lucky Block", style = "rainbow", align = "center", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.71), Size = UDim2.fromScale(0.8, 0.13) },

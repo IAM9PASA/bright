@@ -44,6 +44,7 @@
 -- SCREEN + RULES
 -- ui.device() / ui.adaptive(scales?) / ui.pop(gui, from?) / ui.pop_on(gui, property, from?, watch?)
 -- ui.lint(root)                               list sizing-rule breaks, see RULES.md
+-- ui.motion.loop / bob / spin / pause / tween / pop / shake   idle loops and feedback (src/motion.luau)
 
 -- SERVICES -------------------------
 
@@ -55,6 +56,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local vide = require(script.Parent.vide)
 local lint = require(script.lint)
+local motion = require(script.motion)
 local style = require(script.style)
 
 
@@ -157,6 +159,7 @@ local function build(theme)
 	ui.styles = styles
 	ui.extend = style.extend
 	ui.lint = lint
+	ui.motion = motion
 	ui.sequence = sequence
 	ui.with = build
 
@@ -922,7 +925,18 @@ local function build(theme)
 		})
 		table.insert(props, canvas)
 		table.insert(props, still)
-		return create "Frame" (props)
+		local frame = create "Frame" (props)
+
+		-- idle loops under a closed presence stop running
+		local was_closed
+		vide.effect(function()
+			local closed = not open() and progress() <= 0.01
+			if closed ~= was_closed then
+				was_closed = closed
+				motion.pause(frame, closed)
+			end
+		end)
+		return frame
 	end
 
 	-- shape picks the reference window proportions, the window keeps them on every screen
