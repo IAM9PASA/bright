@@ -146,3 +146,7 @@ The viewer has device presets with the Roblox top bar and notch safe areas, a ga
 Its design checks flag low text contrast (WCAG 2.2), text under 12px on phones, tap targets under 44pt (64px on TV), and buttons under the top bar or a notch.
 Tweens jump to their end value, and images without `sim.asset` show as placeholders.
 The layout follows Roblox's rules closely but not perfectly, so give final polish a look in Studio.
+
+## License
+
+MIT, free to use, change and ship in any game. See [LICENSE](LICENSE).
