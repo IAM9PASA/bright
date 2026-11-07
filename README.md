@@ -64,6 +64,19 @@ ui.window {
 }
 ```
 
+Open and close with a spring instead of popping, and roll numbers instead of jumping:
+
+```lua
+local open = vide.source(false)
+ui.window { title = "Shop", open = open, ... }        -- springs in and out, closed = no input, no cost
+
+ui.counter { value = cash, style = "cash" }           -- 1,450 rolls to 1,390
+ui.button { text = "$95K", locked = function() return cash() < 95000 end }   -- grey, shakes on click
+```
+
+- `disabled`: the action doesn't apply right now (maxed, already claimed). Grey and no input.
+- `locked`: the player can't do it yet (can't afford, needs a level). Grey, but a click shakes the button instead of running `Activated`.
+
 Full API: header comment of `src/init.luau`.
 
 ## Publishing
@@ -79,10 +92,12 @@ wally publish
 Until then, add it as a git submodule or copy `src/` into your project as `Packages/bright` next to vide. The pieces:
 - **Windows:** `window`, `header`, `card`, `panel`.
 - **Text:** `text` (styles `cash`, `legendary`, `epic`, `rare`, `common`, `gems`, `item`, `rainbow`), `title` (white over dark drop edge).
-- **Controls:** `button` (3D candy, `palette` and `disabled` can be vide sources), `close_button`, `icon_button`, `tab`, `input`, `hud_button`, `hit`.
-- **Content:** `item_card`, `sunburst`, `studs`, `progress`, `icon`.
-- **Layout:** `row`, `column`, `scroll_grid { columns }`, `scroll_list`, `padding`, `square`.
-- **Screen:** `device()`, `adaptive()`.
+- **Controls:** `button` (`palette`, `disabled` and `locked` can be vide sources), `close_button`, `icon_button`, `tab`, `input`, `toggle`, `hud_button`, `hit`.
+- **Content:** `item_card`, `counter`, `sunburst`, `studs`, `progress`, `icon`, `hex`, `hex_stack`, `hex_grid { radius, cell }`.
+- **Layout:** `row`, `column`, `scroll_grid { columns }`, `scroll_list` (gaps stay the same share of the width at any item count), `hud_column`, `padding`, `pad`, `square`, `ratio`.
+- **Motion:** `presence { open }` (spring open / close), `motion.loop`, `bob`, `spin`, `pause`, `tween`, `pop`, `shake`.
+- **Screen:** `device()`, `adaptive()`, `lint(root)`.
+- **Types:** `WindowProps`, `ButtonProps`, `TextProps` and friends, for autocomplete and typo checks.
 
 Asset ids for the stud texture, sunburst and icons live in `theme.asset`. Replace them with your own game's ids.
 
@@ -96,18 +111,24 @@ rokit install                        # gets luau (rokit.toml)
 node sim/run.mjs                     # every example -> sim/out/<name>.html, open it in a browser
 node sim/run.mjs gallery --serve     # http://localhost:5173, rebuilds + reloads when you save
 node sim/run.mjs --shot              # pngs per device + design checks in the terminal (needs playwright)
+node sim/run.mjs --strict            # headless: exit 1 on any crash or sizing-rule fail (what CI runs)
+node sim/run.mjs --tests --strict    # sim/tests: lint fixtures and behaviour asserts
 ```
+
+CI (`.github/workflows/check.yml`) runs the two headless commands on every push and PR. You never need to open the viewer.
 
 Examples live in `sim/examples/`, one per style:
 
 | Example | Style | Shows |
 | --- | --- | --- |
-| `gallery` | inventory in all 6 styles (one scene each) | same screen code, only the style changes |
+| `gallery` | inventory in all 6 styles (one scene each) | same screen code, only the style changes, `hud_column` |
 | `styles` | all 6 styles side by side | tabs, progress, toggle, buttons, item card per style |
 | `store` | amber large window | pack cards (blue / pink / green), passes, sale price, robux buttons |
-| `upgrades` | gold | rows sized with `ui.ratio`, level bars, buy and maxed (grey) states |
+| `upgrades` | gold | rows sized with `ui.ratio`, level bars, rolling cash `counter`, maxed (disabled) and can't-afford (locked) buttons |
 | `daily` | pink | 7-day grid, claimed / today / locked cells, reactive claim button |
-| `popups` | red and green popups | dimmed backdrop, confirm and reward, switching between scenes |
+| `popups` | red and green popups | `open` springs popups in and out, a spinning sunburst that pauses while closed |
+| `skilltree` | purple | radius-3 `hex_grid`, owned / open / locked nodes, points `counter` |
+| `lists` | blue | the same `scroll_list` with 2 and 6 items, same gap |
 | `themes` | one style, 4 palettes | only `palette` changes |
 
 `sim/shared/stand_ins.luau` maps the asset ids to local preview drawings. They are normal client code plus a `sim` global:
