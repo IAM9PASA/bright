@@ -1,4 +1,5 @@
--- style: gold "Upgrades" window, rows with stat icon, level bar and buy button (maxed row goes grey)
+-- style: gold "Upgrades" window, rows with stat icon, level bar and buy button.
+-- maxed rows are disabled (nothing to do), too-expensive rows are locked (click = shake, no buy)
 -- node sim/run.mjs upgrades
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,11 +12,11 @@ local theme = ui.theme
 local icon = theme.asset.icon
 
 local UPGRADES = {
-	{ name = "Stomach", stat = "+25 Capacity", image = icon.brainrot, level = 3, max = 10, price = "$1.2K" },
-	{ name = "Power", stat = "+5 Strength", image = icon.power, level = 7, max = 10, price = "$18K" },
-	{ name = "Speed", stat = "+2 Walk Speed", image = ids.bolt, level = 1, max = 5, price = "$450" },
-	{ name = "Luck", stat = "+1% Luck", image = ids.star, level = 5, max = 5, price = "MAX" },
-	{ name = "Cooldown", stat = "-0.1s Eat Time", image = icon.time, level = 2, max = 8, price = "$3.4K" },
+	{ name = "Stomach", stat = "+25 Capacity", image = icon.brainrot, level = 3, max = 10, price = "$1.2K", cost = 1200 },
+	{ name = "Power", stat = "+5 Strength", image = icon.power, level = 7, max = 10, price = "$18K", cost = 18000 },
+	{ name = "Speed", stat = "+2 Walk Speed", image = ids.bolt, level = 1, max = 5, price = "$450", cost = 450 },
+	{ name = "Luck", stat = "+1% Luck", image = ids.star, level = 5, max = 5, price = "MAX", cost = 0 },
+	{ name = "Cooldown", stat = "-0.1s Eat Time", image = icon.time, level = 2, max = 8, price = "$95K", cost = 95000 },
 }
 
 local cash = vide.source(25_000)
@@ -54,11 +55,14 @@ local function row(index: number, upgrade)
 			text = function() return if maxed() then "MAX" else upgrade.price end,
 			palette = "green",
 			disabled = maxed,
+			locked = function() return not maxed() and cash() < upgrade.cost end,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.85, 0.5),
 			Size = UDim2.fromScale(0.24, 0.55),
 			Activated = function()
-				if not maxed() then level(level() + 1) end
+				if maxed() then return end
+				cash(cash() - upgrade.cost)
+				level(level() + 1)
 			end,
 		},
 	}
@@ -103,6 +107,14 @@ vide.mount(function()
 end, screen)
 
 sim.snapshot("upgrades")
+
+-- cooldown costs $95K with $25K cash: locked, so the click shakes and buys nothing
+local cooldown = screen.Upgrades.List.Cooldown
+sim.click(cooldown.Buy)
+assert(cooldown.Buy.Interactable ~= false, "locked buttons must stay clickable")
+assert(cash() == 25000, "a locked click must not run Activated")
+
 sim.click(screen.Upgrades.List.Speed.Buy)
+assert(cash() == 25000 - 450, "an unlocked click buys")
 sim.hover(screen.Upgrades.List.Power.Buy)
 sim.snapshot("bought speed + hover")

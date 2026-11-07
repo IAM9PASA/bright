@@ -22,7 +22,9 @@
 -- ui.title { Text, align, stroke, style }    title font (+ drop edge when the style has one)
 --
 -- CONTROLS
--- ui.button { text, image, palette, amount, disabled }   candy / flat / outline / glow, from the style
+-- ui.button { text, image, palette, amount, disabled, locked }   candy / flat / outline / glow, from the style
+--   disabled = grey + no input: the action does not apply right now (maxed, already claimed)
+--   locked   = grey but clickable: shakes and skips Activated (can't afford, needs a level). bool or source
 -- ui.close_button {} / ui.icon_button { image, palette }
 -- ui.tab { text, active, palette }           palette when active, grey when not (active = bool or source)
 -- ui.input { PlaceholderText }               inset textbox
@@ -503,6 +505,7 @@ local function build(theme)
 		local text = cased(take(props, "text"))
 		local amount = take(props, "amount")
 		local disabled = take(props, "disabled")
+		local locked = take(props, "locked")
 		local studs = take(props, "studs") or theme.studs.button
 		local image = take(props, "image")
 		local palette = take(props, "palette") or theme.accent
@@ -510,10 +513,23 @@ local function build(theme)
 
 		-- disabled buttons turn grey and stop taking input
 		local effective = palette
-		if disabled ~= nil then
+		if disabled ~= nil or locked ~= nil then
 			effective = function()
-				if read(disabled) then return "grey" end
+				if read(disabled) or read(locked) then return "grey" end
 				return read(palette)
+			end
+		end
+
+		-- locked buttons still take the click so the player gets a "no" instead of nothing
+		local button
+		if locked ~= nil then
+			local on_activated = take(props, "Activated")
+			props.Activated = function(...)
+				if read(locked) then
+					motion.shake(button)
+					return
+				end
+				if on_activated then on_activated(...) end
 			end
 		end
 		local function paint(getter)
@@ -598,7 +614,7 @@ local function build(theme)
 			})
 		end
 
-		local button = create "TextButton" (props)
+		button = create "TextButton" (props)
 		bind_press(button, button, face, if face then label else nil)
 		return button
 	end
