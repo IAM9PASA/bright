@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bright Sim</title>
 <style>
+/*SIM_FONTS*/
 :root {
 	--bg: #0e1110; --bar: #161a18; --line: #2a302d; --text: #e4ebe7; --dim: #8b958f; --accent: #4ade80;
 	--warn: #fbbf24; --bad: #f87171;
@@ -216,7 +217,11 @@ const FONT_STACKS = {
 	GothamSSm: `Gotham, "Gotham SSm", Montserrat, Inter, system-ui, sans-serif`,
 	Montserrat: `Montserrat, Inter, system-ui, sans-serif`,
 	SourceSansPro: `"Source Sans 3", "Source Sans Pro", Inter, system-ui, sans-serif`,
-	FredokaOne: `"Fredoka One", Fredoka, Inter, system-ui, sans-serif`,
+	FredokaOne: `"Fredoka One", Fredoka, Nunito, Inter, system-ui, sans-serif`,
+	Michroma: `Michroma, "JetBrains Mono", Inter, sans-serif`,
+	Merriweather: `Merriweather, Caladea, "Bitstream Charter", Georgia, serif`,
+	Oswald: `Oswald, Inter, sans-serif`,
+	Nunito: `Nunito, Inter, sans-serif`,
 	Roboto: `Roboto, Inter, system-ui, sans-serif`,
 	RobotoMono: `"Roboto Mono", "JetBrains Mono", monospace`,
 	Inconsolata: `Inconsolata, "JetBrains Mono", monospace`,
@@ -228,7 +233,9 @@ function font_of(node) {
 	const face = node.p.FontFace;
 	if (face && face.t === "F") {
 		const name = (face.f.match(/families\/([^.]+)\.json/) || [])[1] || "BuilderSans";
-		return { family: FONT_STACKS[name] || `"${name}", Inter, system-ui, sans-serif`, weight: WEIGHTS[face.w] || 400, italic: face.s === "Italic" };
+		// fredoka one only has one (heavy) weight in roblox, fredoka 600 matches it
+		const weight = name === "FredokaOne" ? 600 : WEIGHTS[face.w] || 400;
+		return { family: FONT_STACKS[name] || `"${name}", Inter, system-ui, sans-serif`, weight, italic: face.s === "Italic" };
 	}
 	const legacy = String(prop(node, "Font") || "SourceSans");
 	const bold = /Bold|Black|Heavy/.test(legacy);
@@ -610,7 +617,17 @@ function draw_text(el, node, w, h, inner, stroke, gradient, chain, path, screen)
 		const t = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(bw, bh) : prop(stroke, "Thickness");
 		outline = { color: prop(stroke, "Color"), width: t, alpha: 1 - prop(stroke, "Transparency") };
 	}
-	text_records.push({ node, el, path, size, font, color, alpha: 1 - transparency, chain, placeholder, truncated, scaled, screen, w: bw, h: bh, text, outline, gradient: !!gradient });
+	// a text gradient multiplies the text color, so what you see is color x average gradient
+	let seen_color = color;
+	if (gradient) {
+		const seq = prop(gradient, "Color");
+		if (seq && seq.t === "CS") {
+			let r = 0, g = 0, b = 0;
+			for (let i = 0; i <= 10; i++) { r += seq_at(seq.k, i / 10, 1); g += seq_at(seq.k, i / 10, 2); b += seq_at(seq.k, i / 10, 3); }
+			seen_color = mul(color, { r: r / 11, g: g / 11, b: b / 11 });
+		}
+	}
+	text_records.push({ node, el, path, size, font, color: seen_color, alpha: 1 - transparency, chain, placeholder, truncated, scaled, screen, w: bw, h: bh, text, outline, gradient: !!gradient });
 }
 
 function draw_scrolling(node, el, w, h, chain, path, screen) {
@@ -957,7 +974,8 @@ function sync_ui() {
 const sim = { ready: false, checks: [], show, devices: DEVICES };
 window.sim = sim;
 
-document.fonts.ready.then(() => {
+// embedded fonts load lazily, but canvas text measuring needs them now
+Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready).then(() => {
 	load_state();
 	setup_ui();
 	sync_ui();

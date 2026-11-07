@@ -1,25 +1,16 @@
--- inventory screen in the brainrot / cake style, laid out like CakeUi.Main.Inventory
+-- the same inventory screen in every built-in style: the code below never mentions a style,
+-- only `bright.with(style)` at the bottom changes. one scene per style in the viewer.
 -- node sim/run.mjs gallery        (add --shot for pngs + design checks)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local ui = require(ReplicatedStorage.Packages.bright)
+local bright = require(ReplicatedStorage.Packages.bright)
 local vide = require(ReplicatedStorage.Packages.vide)
 
-local theme = ui.theme
-local icon = theme.asset.icon
+local icon = bright.theme.asset.icon
 
--- the sim cannot load roblox images, so show local stand-ins for the real ids
-sim.asset(theme.asset.studs, "sim/assets/studs.svg")
-sim.asset(theme.asset.sunburst, "sim/assets/sunburst.svg")
-sim.asset(icon.inventory, "sim/assets/backpack.svg")
-sim.asset(icon.store, "sim/assets/store.svg")
-sim.asset(icon.lucky_block, "sim/assets/lucky.svg")
-sim.asset(icon.cash, "sim/assets/cash.svg")
-sim.asset(icon.brainrot, "sim/assets/cake.svg")
-sim.asset("rbxassetid://9001", "sim/assets/donut.svg")
-sim.asset("rbxassetid://9002", "sim/assets/cup.svg")
-sim.asset("rbxassetid://9003", "sim/assets/shark.svg")
+-- local drawings for the asset ids (the sim cannot load roblox images)
+require(ReplicatedStorage.Shared.stand_ins)()
 
 local ITEMS = {
 	{ name = "Cakey Cakini", image = icon.brainrot, value = "$12/s", rarity = "common", rays = Color3.fromHex("0091FF") },
@@ -30,7 +21,7 @@ local ITEMS = {
 }
 
 -- phones get a bigger window: the same screen fraction is too small to read or tap there
-local phone = ui.device() == "phone"
+local phone = bright.device() == "phone"
 
 local tab = vide.source("brainrots")
 local selected = vide.source(0)
@@ -44,9 +35,9 @@ local function current()
 	return if i == 0 then nil else item_at(i)
 end
 
-local screen = sim.screen("CakeUi")
+local screen = sim.screen("Game")
 
-vide.mount(function()
+local function inventory(ui)
 	local cards = {}
 	for i = 1, 11 do
 		local item = item_at(i)
@@ -84,7 +75,6 @@ vide.mount(function()
 			Name = "Inventory",
 			title = "Inventory",
 			icon = icon.inventory,
-			palette = "blue",
 			shape = "inventory",
 			close = function() end,
 			Size = if phone then UDim2.fromScale(0.8, 0.98) else UDim2.fromScale(0.62, 0.8),
@@ -103,7 +93,7 @@ vide.mount(function()
 					Position = UDim2.fromScale(0.03, 0.01),
 					gap = 0.03,
 					ui.tab { Name = "brainrots", text = "Brainrots", LayoutOrder = 1, Size = UDim2.fromScale(0.48, 1), active = function() return tab() == "brainrots" end },
-					ui.tab { Name = "items", text = "Items", LayoutOrder = 2, Size = UDim2.fromScale(0.38, 1), palette = "orange", active = function() return tab() == "items" end },
+					ui.tab { Name = "items", text = "Items", LayoutOrder = 2, Size = UDim2.fromScale(0.38, 1), active = function() return tab() == "items" end },
 				},
 				ui.progress {
 					Name = "Capacity",
@@ -138,7 +128,8 @@ vide.mount(function()
 					AnchorPoint = Vector2.new(0.5, 0.5),
 					Position = UDim2.fromScale(0.5, 0.271),
 					Size = UDim2.fromScale(0.832, 0.442),
-					vide.create "CanvasGroup" {
+					-- your own code can read the style too: rays only where the style uses them
+					ui.theme.card.rays and vide.create "CanvasGroup" {
 						Name = "Rays",
 						BackgroundTransparency = 1,
 						Size = UDim2.fromScale(1, 1),
@@ -150,7 +141,7 @@ vide.mount(function()
 							end,
 							Size = UDim2.fromScale(1.4, 1.4),
 						},
-					},
+					} or nil,
 					ui.icon {
 						Name = "Icon",
 						Image = function()
@@ -219,13 +210,19 @@ vide.mount(function()
 			},
 		},
 	}
-end, screen)
+end
 
-local window = screen.Inventory
-sim.snapshot("default")
-
-sim.click(window.Holder.List.item_4)
-sim.hover(window.Side.Equip)
-sim.press(window.Holder.List.item_2)
-tab("items")
-sim.snapshot("selected + hover + press")
+-- one scene per style, with an item picked and the equip button hovered
+for _, name in { "brainrot", "clean", "glass", "scifi", "fantasy", "pastel" } do
+	selected(0)
+	tab("brainrots")
+	local destroy = vide.mount(function()
+		return inventory(bright.with(bright.styles[name]))
+	end, screen)
+	sim.click(screen.Inventory.Holder.List.item_4)
+	sim.hover(screen.Inventory.Side.Equip)
+	sim.snapshot(name)
+	-- vide's destroy only stops the reactive scope, the instances stay: clear them too
+	destroy()
+	screen:ClearAllChildren()
+end

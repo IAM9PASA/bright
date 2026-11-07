@@ -1,9 +1,42 @@
 # Bright
 
-UI building blocks on top of [vide](https://github.com/centau/vide), in the "brainrot / cake" cartoon style:
-dark translucent navy windows, glossy studded headers, chunky 3D candy buttons, and heavy white text with a thick dark outline.
-Change `src/theme.luau` to restyle everything built with it: palettes, text gradients, fonts, outlines and asset ids.
+UI building blocks on top of [vide](https://github.com/centau/vide) that make any UI style easier to build and prettier by default.
+You write the screen once with `ui.window`, `ui.button`, `ui.item_card` and friends. The **style** decides how it looks: fonts, corners, outlines, header kind, button kind, glow, palettes.
 All sizes are scale: no px offsets, scaled strokes, scaled text. The rules are in [RULES.md](RULES.md), and `ui.lint(root)` checks them in Studio or in the simulator.
+
+## Styles
+
+| Style | Look | Good for |
+| --- | --- | --- |
+| `brainrot` (default) | navy glass, glossy studded header bars, 3D candy buttons, heavy outlined text | simulators, tycoons, meme games |
+| `clean` | white rounded windows, flat solid buttons, dark text | menus, settings, modern app-like UI |
+| `glass` | dark see-through windows, mint glow edges, glowing buttons | neon, script-hub, nightlife |
+| `scifi` | navy, cyan lines, square corners with bracket marks, outline buttons, uppercase | shooters, space, tech |
+| `fantasy` | wood and gold, parchment banner title, beveled buttons, serif text | RPG, adventure, quests |
+| `pastel` | cream, round everything, bubbly pill buttons, rounded font | pets, cafe, dress-up, cute games |
+
+```lua
+local bright = require(ReplicatedStorage.Packages.bright)   -- default style (src/theme.luau)
+local ui = bright.with(bright.styles.glass)                  -- or any style, several can live side by side
+```
+
+Make your own style from any of them. Only list what changes:
+
+```lua
+local candy_night = bright.extend(bright.styles.brainrot, {
+	surface = { color = Color3.fromHex("1A0B2E"), corner = UDim.new(0.04, 0) },
+	button = { studs = false, corner = UDim.new(0.5, 0) },
+	palette = { blue = { face = { Color3.fromHex("C9A8FF"), Color3.fromHex("8A4DFF") } } },
+})
+local ui = bright.with(candy_night)
+```
+
+Style settings (see `src/styles/brainrot.luau` for every key):
+- **Surface:** `surface` sets the window and card fill, transparency, outline, `corner`, optional `gradient`, `glow` and sci-fi `brackets`.
+- **Kinds:** `header.kind` is `bar`, `plain` or `banner`. `button.kind` is `candy`, `flat`, `outline` or `glow`. `button.studs` and `header.studs` turn the stud texture on or off.
+- **Text:** `text` sets `outline`, `drop` (dark copy under titles) and `upper` (uppercase). `font` sets the `title` and `body` fonts.
+- **Cards:** `card.rays` puts sunbursts behind items. Without it, items get a rarity glow and stripe.
+- **Colors:** `palette` sets the named colors (blue, green, red, gold, purple, pink, orange, amber, grey). Each has a dark `base`, an outline `stroke`, a `face` gradient, a `label` color and a `text` outline color. `text_gradient` sets the cash and rarity text.
 
 ## Use
 
@@ -57,12 +90,13 @@ Examples live in `sim/examples/`, one per style:
 
 | Example | Style | Shows |
 | --- | --- | --- |
-| `gallery` | blue inventory | item cards, preview panel, tabs, HUD buttons, progress |
+| `gallery` | inventory in all 6 styles (one scene each) | same screen code, only the style changes |
+| `styles` | all 6 styles side by side | tabs, progress, toggle, buttons, item card per style |
 | `store` | amber large window | pack cards (blue / pink / green), passes, sale price, robux buttons |
 | `upgrades` | gold | rows sized with `ui.ratio`, level bars, buy and maxed (grey) states |
 | `daily` | pink | 7-day grid, claimed / today / locked cells, reactive claim button |
 | `popups` | red and green popups | dimmed backdrop, confirm and reward, switching between scenes |
-| `themes` | same window in 4 palettes | only `palette` changes, plus `ui.toggle` |
+| `themes` | one style, 4 palettes | only `palette` changes |
 
 `sim/shared/stand_ins.luau` maps the asset ids to local preview drawings. They are normal client code plus a `sim` global:
 

@@ -89,6 +89,52 @@ function collect_modules(dir, instance_path, out = []) {
 	return out;
 }
 
+// FONTS -------------------------
+// roblox font families -> open font files with the same (or a close) design, from @fontsource on npm.
+// fetched once into sim/.cache/fonts. without them the viewer falls back to system fonts
+const FONT_FILES = {
+	GothamSSm: ["montserrat", "Montserrat"],
+	Montserrat: ["montserrat", "Montserrat"],
+	FredokaOne: ["fredoka", "Fredoka"],
+	Michroma: ["michroma", "Michroma"],
+	Merriweather: ["merriweather", "Merriweather"],
+	Oswald: ["oswald", "Oswald"],
+	Nunito: ["nunito", "Nunito"],
+};
+const FONT_DIR = path.join(SIM, ".cache", "fonts");
+
+function fetch_fonts() {
+	if (fs.existsSync(FONT_DIR) && fs.readdirSync(FONT_DIR).some((f) => f.endsWith(".woff2"))) return;
+	try {
+		fs.mkdirSync(FONT_DIR, { recursive: true });
+		const packages = [...new Set(Object.values(FONT_FILES).map(([pkg]) => `@fontsource/${pkg}`))];
+		execFileSync("npm", ["pack", ...packages, "--silent"], { cwd: FONT_DIR, stdio: "ignore" });
+		for (const tgz of fs.readdirSync(FONT_DIR).filter((f) => f.endsWith(".tgz"))) {
+			execFileSync("tar", ["-xzf", tgz, "--wildcards", "--strip-components=2", "package/files/*latin-[0-9]*-normal.woff2"], { cwd: FONT_DIR, stdio: "ignore" });
+			fs.rmSync(path.join(FONT_DIR, tgz));
+		}
+	} catch {
+		console.warn("[sim] could not fetch fonts (npm offline?), using system fonts");
+	}
+}
+
+function font_css(json) {
+	if (!fs.existsSync(FONT_DIR)) return "";
+	const used = new Set([...json.matchAll(/families\/(\w+)\.json/g)].map((m) => m[1]));
+	let css = "";
+	for (const family of used) {
+		const entry = FONT_FILES[family];
+		if (!entry) continue;
+		const [pkg, css_name] = entry;
+		for (const file of fs.readdirSync(FONT_DIR).filter((f) => f.startsWith(`${pkg}-latin-`))) {
+			const weight = file.match(/-(\d+)-normal/)[1];
+			const data = fs.readFileSync(path.join(FONT_DIR, file)).toString("base64");
+			css += `@font-face{font-family:"${css_name}";font-weight:${weight};src:url(data:font/woff2;base64,${data}) format("woff2")}\n`;
+		}
+	}
+	return css;
+}
+
 // BUILD -------------------------
 
 function long_string(text) {
@@ -154,7 +200,7 @@ function run_example(luau, modules, example) {
 	const html_path = path.join(OUT, `${name}.html`);
 	const template = fs.readFileSync(path.join(SIM, "view.html"), "utf8");
 	const json = JSON.stringify(data).replace(/</g, "\\u003c");
-	fs.writeFileSync(html_path, template.replace("/*SIM_DATA*/null", json));
+	fs.writeFileSync(html_path, template.replace("/*SIM_DATA*/null", json).replace("/*SIM_FONTS*/", font_css(json)));
 	fs.writeFileSync(path.join(OUT, `${name}.json`), JSON.stringify(data, null, 1));
 	console.log(`[sim] ${name}: ${data.scenes.length} scene(s) -> ${path.relative(process.cwd(), html_path)}`);
 
@@ -178,6 +224,7 @@ function run_example(luau, modules, example) {
 
 function build_all() {
 	const luau = find_luau();
+	fetch_fonts();
 	const modules = [
 		...collect_modules(path.join(ROOT, "src"), "ReplicatedStorage/Packages/bright"),
 		...collect_modules(find_vide(), "ReplicatedStorage/Packages/vide"),
