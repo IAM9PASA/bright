@@ -7,11 +7,15 @@
 -- ui.icon { Image = id }                     square image
 -- ui.row / ui.column { gap = 0.02, align = "center", cross = "center", fill = true }   gap = scale
 -- ui.list_layout { direction = "row" | "column", gap, align, cross, fill }   layout only
--- ui.scroll_grid { cell = 0.155, gap_x = 0.0135, gap_y = 0.0135 }   square cells, all scale
+-- ui.scroll_grid { columns = 6, gap_x = 0.0135, gap_y }   square cells sized from the width, all scale
+--   (or cell = 0.155 for a fixed cell width instead of a column count)
 -- ui.tab { Name, text, active }              pill tab with "label" + "button", active = bool or source
+-- ui.button { text, style, disabled }       text button, style: primary (accent, one per screen) / secondary / ghost
 -- ui.icon_button { Name, image }             square button with "image"
 -- ui.hit { hover = true, ... }               invisible full-size "button" (hover lightens parent)
 -- ui.square(ratio?) / ui.padding(x, y?)      constraints, padding is scale per axis
+-- ui.device()                               "phone" | "tablet" | "desktop" | "console"
+-- ui.adaptive(scales?)                       UIScale that grows the ui on small screens, put it in the root panel
 -- everything is scale (user rule): no px offsets, no text size px limits
 -- ui.pop(gui, from?) / ui.pop_on(gui, property, from?, watch?)   scale-in animation (now / on change)
 -- ui.gradient(colors, rotation?)             UIGradient from a color list, 90 = top to bottom
@@ -21,6 +25,7 @@
 -- SERVICES -------------------------
 
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 
 -- MODULES -------------------------
@@ -47,6 +52,13 @@ local text_alignments = {
 	left = Enum.TextXAlignment.Left,
 	center = Enum.TextXAlignment.Center,
 	right = Enum.TextXAlignment.Right,
+}
+
+local button_styles = {
+	-- the fill multiplies the accent gradient: rest a little dim so hover can brighten to the full accent
+	primary = { fill = Color3.fromRGB(222, 222, 222), hover = Color3.new(1, 1, 1), gradient = theme.gradient.accent, text = theme.color.text_on_accent, transparency = 0 },
+	secondary = { fill = theme.color.card, gradient = theme.gradient.shade, text = theme.color.text, transparency = 0 },
+	ghost = { fill = theme.color.card, gradient = theme.gradient.shade, text = theme.color.text_dim, transparency = 1 },
 }
 
 local ui = {}
@@ -78,6 +90,20 @@ end
 local function corner(radius: UDim)
 	return create "UICorner" { CornerRadius = radius }
 end
+
+-- gamepad / keyboard focus ring. roblox clones SelectionImageObject over the selected button,
+-- the default is a thin grey box that disappears on dark ui
+local selection_ring = create "Frame" {
+	Name = "selection_ring",
+	BackgroundTransparency = 1,
+	Size = UDim2.fromScale(1, 1),
+	corner(theme.radius.button),
+	create "UIStroke" {
+		Color = theme.color.accent,
+		StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize,
+		Thickness = 0.06,
+	},
+}
 
 function ui.gradient(colors: { Color3 }, rotation: number?)
 	-- one color has no span to spread over, ColorSequence.new(color) fills it flat
@@ -190,7 +216,8 @@ function ui.icon(props)
 end
 
 -- hover lightens, press darkens, both tweened. target defaults to the button's parent at event time
-local function bind_states(button: GuiButton, target: GuiObject?)
+local function bind_states(button: GuiButton, target: GuiObject?, hover_color: Color3?)
+	local hover = hover_color or theme.color.card_hover
 	local base_color
 
 	local function tween_to(color)
@@ -201,7 +228,7 @@ local function bind_states(button: GuiButton, target: GuiObject?)
 	button.MouseEnter:Connect(function()
 		local frame = target or button.Parent :: GuiObject
 		base_color = base_color or frame.BackgroundColor3
-		tween_to(theme.color.card_hover)
+		tween_to(hover)
 	end)
 	button.MouseLeave:Connect(function()
 		if not base_color then return end
@@ -213,7 +240,7 @@ local function bind_states(button: GuiButton, target: GuiObject?)
 	end)
 	button.MouseButton1Up:Connect(function()
 		if not base_color then return end
-		tween_to(theme.color.card_hover)
+		tween_to(hover)
 	end)
 	-- touch never fires MouseLeave, so a tapped card stayed on the hover color: reset when the touch ends
 	button.InputEnded:Connect(function(input)
@@ -255,6 +282,7 @@ function ui.hit(props)
 		BackgroundTransparency = 1,
 		ImageTransparency = 1,
 		ZIndex = 2,
+		SelectionImageObject = selection_ring,
 	})
 	local button = create "ImageButton" (props)
 	if hover then
@@ -300,10 +328,16 @@ function ui.column(props)
 end
 
 -- cell and gaps are scale of the scroll frame window
+-- inside a scrolling frame scale follows the canvas, and an automatic canvas grows with its content,
+-- so a plain square constraint shrank cells to a fraction of the height (12 tiny columns instead of 6).
+-- ScaleWithParentSize + Width sizes every cell from the width only: columns stay put on every screen
 function ui.scroll_grid(props)
-	local cell = take(props, "cell") or 0.2
+	local columns = take(props, "columns")
 	local gap_x = take(props, "gap_x") or 0.0135
 	local gap_y = take(props, "gap_y") or gap_x
+	-- cells + gaps add up to exactly 1, and UDim scale is a 32 bit float: round-off can push the last
+	-- column onto the next row, so leave a hair of slack
+	local cell = take(props, "cell") or (columns and (1 - gap_x * (columns - 1)) / columns - 0.0005) or 0.2
 
 	defaults(props, {
 		BackgroundTransparency = 1,
@@ -318,7 +352,11 @@ function ui.scroll_grid(props)
 		CellSize = UDim2.fromScale(cell, cell),
 		CellPadding = UDim2.fromScale(gap_x, gap_y),
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		ui.square(),
+		create "UIAspectRatioConstraint" {
+			AspectRatio = 1,
+			AspectType = Enum.AspectType.ScaleWithParentSize,
+			DominantAxis = Enum.DominantAxis.Width,
+		},
 	})
 	return create "ScrollingFrame" (props)
 end
@@ -367,6 +405,7 @@ function ui.icon_button(props)
 		BackgroundTransparency = theme.transparency.panel,
 		AutoButtonColor = false,
 		Text = "",
+		SelectionImageObject = selection_ring,
 	})
 	table.insert(props, corner(theme.radius.button))
 	table.insert(props, ui.gradient(theme.gradient.shade))
@@ -382,6 +421,89 @@ function ui.icon_button(props)
 	local button = create "TextButton" (props)
 	bind_states(button, button)
 	return button
+end
+
+
+-- reserve "primary" for the one main action on a screen (buy, play, confirm): game ui guides and
+-- roblox's adaptive design guide both say the accent should point at the key action only
+function ui.button(props)
+	local text = take(props, "text")
+	local style = button_styles[take(props, "style") or "secondary"] or button_styles.secondary
+	local disabled = take(props, "disabled")
+
+	-- disabled can be a bool or a vide source
+	local function when_disabled(on, off)
+		if type(disabled) == "function" then
+			return function()
+				return if disabled() then on else off
+			end
+		end
+		return if disabled then on else off
+	end
+
+	local fill_transparency = style.transparency
+	if fill_transparency < 1 then
+		fill_transparency = when_disabled(theme.disabled.transparency, style.transparency)
+	end
+
+	defaults(props, {
+		Size = UDim2.fromScale(0.2, 0.08),
+		BackgroundColor3 = style.fill,
+		BackgroundTransparency = fill_transparency,
+		AutoButtonColor = false,
+		Interactable = when_disabled(false, true),
+		Text = "",
+		SelectionImageObject = selection_ring,
+	})
+	table.insert(props, corner(theme.radius.pill))
+	table.insert(props, ui.gradient(style.gradient))
+	table.insert(props, ui.text {
+		Name = "label",
+		Text = text,
+		style = "title",
+		TextColor3 = style.text,
+		TextTransparency = when_disabled(theme.disabled.transparency, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.8, 0.46),
+	})
+	local button = create "TextButton" (props)
+	-- ghost buttons have no fill to lighten, so they only get the label color
+	if style.transparency < 1 then
+		bind_states(button, button, style.hover)
+	end
+	return button
+end
+
+-- what kind of screen this is, from the viewport and input. phones are touch with a short side under 500pt
+function ui.device(): "phone" | "tablet" | "desktop" | "console"
+	local camera = workspace.CurrentCamera
+	local viewport = if camera then camera.ViewportSize else Vector2.new(1920, 1080)
+	if UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
+		return "console"
+	end
+	if UserInputService.TouchEnabled then
+		return if math.min(viewport.X, viewport.Y) < 500 then "phone" else "tablet"
+	end
+	return "desktop"
+end
+
+-- a UIScale (still pure scale) that grows the ui on phones so text and buttons stay readable and tappable.
+-- updates when the viewport changes (rotation, window resize)
+function ui.adaptive(scales: { [string]: number }?)
+	local picks = scales or theme.adaptive
+	local scale = create "UIScale" { Name = "adaptive_scale" }
+
+	local function update()
+		local device = ui.device()
+		scale.Scale = picks[device] or theme.adaptive[device] or 1
+	end
+	update()
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(update)
+	end
+	return scale
 end
 
 
