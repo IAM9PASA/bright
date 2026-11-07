@@ -238,7 +238,10 @@ function build_all() {
 		.filter((f) => names.length === 0 || names.includes(f.replace(/\.luau?$/, "")))
 		.map((f) => path.join(EXAMPLES, f));
 	if (examples.length === 0) fail(`no examples matched ${names.join(", ")} in sim/examples`);
-	return examples.map((e) => run_example(luau, modules, e)).filter(Boolean);
+	const builds = examples.map((e) => run_example(luau, modules, e));
+	// a crashed example (luau error, failed assert) fails the whole run, so ci catches it
+	build_all.failed = builds.filter((b) => !b).length;
+	return builds.filter(Boolean);
 }
 
 // SCREENSHOTS + CHECKS -------------------------
@@ -335,5 +338,5 @@ if (flag("serve")) {
 	let problems = rule_fails;
 	if (flag("shot")) problems += await shoot(builds);
 	if (flag("strict") && problems > 0) process.exit(1);
-	if (builds.length === 0) process.exit(1);
+	if (builds.length === 0 || build_all.failed > 0) process.exit(1);
 }
