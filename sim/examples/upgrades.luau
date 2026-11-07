@@ -101,7 +101,6 @@ vide.mount(function()
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.573),
 			Size = UDim2.fromScale(1, 0.853),
-			gap = 0.025,
 			rows,
 		},
 	}
