@@ -85,9 +85,10 @@ vide.mount(function()
 		Size = UDim2.fromScale(0.55, 0.8),
 		ui.adaptive { phone = 1.25 },
 
-		ui.text {
+		ui.counter {
 			Name = "Cash",
-			Text = function() return `$ {cash()}` end,
+			value = cash,
+			format = function(n) return `$ {ui.thousands(n)}` end,
 			style = "cash",
 			align = "right",
 			AnchorPoint = Vector2.new(1, 0.5),
@@ -116,5 +117,6 @@ assert(cash() == 25000, "a locked click must not run Activated")
 
 sim.click(screen.Upgrades.List.Speed.Buy)
 assert(cash() == 25000 - 450, "an unlocked click buys")
+assert(screen.Upgrades.Cash.Text == "$ 24,550", `counter should roll to $ 24,550, got {screen.Upgrades.Cash.Text}`)
 sim.hover(screen.Upgrades.List.Power.Buy)
 sim.snapshot("bought speed + hover")

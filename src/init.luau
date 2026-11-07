@@ -20,6 +20,7 @@
 -- ui.text "hi" / ui.text { style, align, stroke }   label in the style's body font
 --   style = nil | "dim" | "cash" | "legendary" | "epic" | "rare" | "common" | "gems" | "item" | "rainbow"
 -- ui.title { Text, align, stroke, style }    title font (+ drop edge when the style has one)
+-- ui.counter { value, format, style, time }  number that rolls to its new value (source(number))
 --
 -- CONTROLS
 -- ui.button { text, image, palette, amount, disabled, locked }   candy / flat / outline / glow, from the style
@@ -385,6 +386,41 @@ local function build(theme)
 			})
 		end
 		return create "Frame" (props)
+	end
+
+	-- 1234567 -> "1,234,567"
+	local function thousands(n: number): string
+		local whole = tostring(math.round(n))
+		local sign, digits = whole:match("^(%-?)(%d+)$")
+		local grouped = (digits :: string):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+		return (sign or "") .. grouped
+	end
+	ui.thousands = thousands
+
+	-- rolls instead of jumping: a NumberValue tweens to each new value (quart out) and the label follows
+	function ui.counter(props)
+		local value = take(props, "value")
+		local format = take(props, "format") or thousands
+		local time = take(props, "time") or 0.6
+		assert(type(value) == "function", "ui.counter: value must be a vide source")
+
+		local shown = Instance.new("NumberValue")
+		shown.Value = value()
+		props.Text = format(shown.Value)
+		local label = ui.text(props)
+		shown.Parent = label
+
+		shown:GetPropertyChangedSignal("Value"):Connect(function()
+			label.Text = cased(format(shown.Value)) :: any
+		end)
+		local tween_info = TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+		vide.effect(function()
+			local target = value()
+			if target ~= shown.Value then
+				TweenService:Create(shown, tween_info, { Value = target }):Play()
+			end
+		end)
+		return label
 	end
 
 	-- MOTION -------------------------
