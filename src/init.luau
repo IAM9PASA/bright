@@ -30,7 +30,8 @@
 -- ui.tab { text, active, palette }           palette when active, grey when not (active = bool or source)
 -- ui.input { PlaceholderText }               inset textbox
 -- ui.toggle { on }                           on/off switch, on = bool or vide source (click flips a source)
--- ui.hud_button { text, image, notify }     square side button with caption
+-- ui.hud_button { text, image, notify }     square side button with caption. pass your own
+--   UIAspectRatioConstraint (ui.square(ratio)) to change the shape, it replaces the default square
 -- ui.hud_column { side = "left", cell = 0.28, gap = 0.03 }   screen-edge column the hud buttons stack in
 -- ui.hit { hover = true, ... }                invisible full-size "button", hover pops the parent
 --
@@ -153,6 +154,16 @@ end
 local function read(value)
 	if type(value) == "function" then return value() end
 	return value
+end
+
+-- true when a props table already holds an aspect constraint (as a child instance)
+local function has_aspect(props): boolean
+	for key, value in props do
+		if type(key) == "number" and typeof(value) == "Instance" and value:IsA("UIAspectRatioConstraint") then
+			return true
+		end
+	end
+	return false
 end
 
 local function center(size: UDim2, y: number?)
@@ -771,7 +782,10 @@ local function build(theme)
 		if theme.surface.gradient then
 			table.insert(props, ui.gradient(theme.surface.gradient))
 		end
-		table.insert(props, ui.square())
+		-- square by default, but a UIAspectRatioConstraint passed in wins (two would fight)
+		if not has_aspect(props) then
+			table.insert(props, ui.square())
+		end
 		table.insert(props, corner(if theme.card.corner.Scale > 0 then theme.card.corner else UDim.new(0.015, 0)))
 		table.insert(props, stroke(theme.surface.stroke, math.max(theme.stroke.card, 0.02), theme.surface.stroke_transparency))
 		table.insert(props, ui.icon(defaults(center(UDim2.fromScale(0.68, 0.68), 0.42), { Name = "Icon", Image = image, ZIndex = 2 })))
