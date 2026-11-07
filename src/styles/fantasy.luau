@@ -65,7 +65,7 @@ return extend(base, {
 	},
 
 	font = {
-		title = Font.new("rbxasset://fonts/families/Merriweather.json", Enum.FontWeight.Black),
+		title = Font.new("rbxasset://fonts/families/Merriweather.json", Enum.FontWeight.Heavy),
 		body = Font.new("rbxasset://fonts/families/Merriweather.json", Enum.FontWeight.Bold),
 	},
 

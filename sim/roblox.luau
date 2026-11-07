@@ -226,13 +226,35 @@ function TweenInfo.new(time, style, direction, repeats, reverses, delay)
 	})
 end
 
--- every Enum.X.Y exists, items are cached so == works
+-- every Enum.X.Y exists and items are cached so == works. enums listed in KNOWN are checked like
+-- roblox does, so a typo such as FontWeight.Black errors here instead of in the game
+local KNOWN_ENUMS = {
+	FontWeight = { "Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Heavy" },
+	FontStyle = { "Normal", "Italic" },
+	ApplyStrokeMode = { "Contextual", "Border" },
+	StrokeSizingMode = { "FixedSize", "ScaledSize" },
+	LineJoinMode = { "Round", "Bevel", "Miter" },
+	AspectType = { "FitWithinMaxSize", "ScaleWithParentSize" },
+	DominantAxis = { "Width", "Height" },
+	ScaleType = { "Stretch", "Slice", "Tile", "Fit", "Crop" },
+	TextXAlignment = { "Left", "Center", "Right" },
+	TextYAlignment = { "Top", "Center", "Bottom" },
+	FillDirection = { "Horizontal", "Vertical" },
+	HorizontalAlignment = { "Center", "Left", "Right" },
+	VerticalAlignment = { "Center", "Top", "Bottom" },
+	EasingStyle = { "Linear", "Sine", "Back", "Quad", "Quart", "Quint", "Bounce", "Elastic", "Exponential", "Circular", "Cubic" },
+	EasingDirection = { "In", "Out", "InOut" },
+}
 local Enum
 do
 	local item_meta, _, new_item = datatype("EnumItem")
 	item_meta.__tostring = function(self) return `Enum.{self.EnumType}.{self.Name}` end
 	local enum_meta = make_type("Enum", {})
 	enum_meta.__index = function(self, name)
+		local known = KNOWN_ENUMS[rawget(self, "__name")]
+		if known and not table.find(known, name) then
+			error(`{name} is not a valid member of "Enum.{rawget(self, "__name")}"`, 2)
+		end
 		local item = new_item({ Name = name, EnumType = rawget(self, "__name"), Value = 0 })
 		rawset(self, name, item)
 		return item
