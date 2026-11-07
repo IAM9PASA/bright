@@ -459,7 +459,8 @@ function render(node, parent_el, x, y, w, h, chain, path, screen) {
 
 	const is_text = TEXT_CLASSES.has(node.c);
 	const stroke = child_of(node, "UIStroke");
-	if (stroke && !(is_text && prop(stroke, "ApplyStrokeMode") !== "Border")) draw_border_stroke(el, stroke, w, h, radius);
+	let stroke_px = null;
+	if (stroke && !(is_text && prop(stroke, "ApplyStrokeMode") !== "Border")) stroke_px = draw_border_stroke(el, stroke, w, h, radius);
 
 	const padding = child_of(node, "UIPadding");
 	const inner = padding
@@ -469,7 +470,7 @@ function render(node, parent_el, x, y, w, h, chain, path, screen) {
 	const new_chain = [...chain, node];
 	if (is_text) draw_text(el, node, w, h, inner, is_text && stroke, gradient && bg_t >= 1 ? gradient : null, new_chain, path, screen);
 
-	const record = { node, el, path, w, h, chain: new_chain, screen };
+	const record = { node, el, path, w, h, chain: new_chain, screen, pad: padding ? inner : null, stroke_px };
 	records.push(record);
 
 	if (node.c === "ScrollingFrame") {
@@ -482,7 +483,7 @@ function render(node, parent_el, x, y, w, h, chain, path, screen) {
 
 function draw_border_stroke(el, stroke, w, h, radius) {
 	const thickness = prop(stroke, "StrokeSizingMode") === "ScaledSize" ? prop(stroke, "Thickness") * Math.min(w, h) : prop(stroke, "Thickness");
-	if (thickness <= 0) return;
+	if (thickness <= 0) return null;
 	const alpha = 1 - prop(stroke, "Transparency");
 	const color = prop(stroke, "Color");
 	const gradient = child_of(stroke, "UIGradient");
@@ -494,6 +495,7 @@ function draw_border_stroke(el, stroke, w, h, radius) {
 		background: gradient ? gradient_css(color, alpha, gradient) : css(color, alpha),
 	});
 	el.appendChild(div);
+	return alpha > 0.3 ? thickness : null;
 }
 
 const IMAGE_PLACEHOLDER = (c) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='4'/><circle cx='9' cy='9' r='2'/><path d='M21 15l-5-5L5 21'/></svg>`)}")`;
@@ -692,20 +694,49 @@ function run_checks(device, area) {
 		if (t.truncated) out.push({ level: "warn", rule: "truncated", path: t.path, el: t.el, message: `${label} is cut off with an ellipsis` });
 	}
 
+	// measured rules (RULES.md): padding that looks even, outlines that survive small screens
+	for (const r of records) {
+		if (!visible_record(r)) continue;
+		if (r.pad && !TEXT_CLASSES.has(r.node.c)) {
+			const side = Math.max(r.pad.l, r.pad.r), top = Math.max(r.pad.t, r.pad.b);
+			if (side > 2 && top > 2 && Math.max(side, top) / Math.min(side, top) > 1.6) {
+				out.push({ level: "warn", rule: "even padding", path: r.path, el: r.el, message: `sides ${Math.round(side)}px vs top/bottom ${Math.round(top)}px, use ui.pad(space, aspect)` });
+			}
+		}
+		if (r.stroke_px !== null && r.stroke_px < 1) {
+			out.push({ level: "warn", rule: "thin stroke", path: r.path, el: r.el, message: `outline is ${r.stroke_px.toFixed(2)}px on this screen and will flicker or vanish, raise its Thickness` });
+		}
+	}
+	for (const t of text_records) {
+		if (t.outline && t.outline.alpha > 0.5 && t.outline.width < 0.75 && visible_record(t) && contrast(t.color, t.outline.color) >= 1.2) {
+			out.push({ level: "warn", rule: "thin stroke", path: t.path, el: t.el, message: `text outline is ${t.outline.width.toFixed(2)}px here, too thin to read as an outline` });
+		}
+	}
+
+	// static sizing rules from src/lint.luau (offsets, px strokes, unscaled text), found by the luau run
+	const scene = DATA.runs[state.device][state.scene] || DATA.runs[state.device][0];
+	for (const p of scene.lint || []) {
+		const el = document.querySelector(`#screen [data-path="${CSS.escape(p.path)}"]`) || document.querySelector(`#screen [data-path="${CSS.escape(p.path.split(".").slice(0, -1).join("."))}"]`);
+		if (el) out.push({ level: p.level, rule: p.rule, path: p.path, el, message: p.message });
+		else out.push({ level: p.level, rule: p.rule, path: p.path, el: document.getElementById("screen"), message: p.message });
+	}
+
 	for (const r of records) {
 		const interactive = BUTTON_CLASSES.has(r.node.c) && prop(r.node, "Visible") !== false && r.node.p.Interactable !== false;
-		if (!interactive || !visible_record(r)) continue;
-		const rect = r.el.getBoundingClientRect();
+		if (!interactive) continue;
+		const full = r.el.getBoundingClientRect();
+		const rect = visible_rect(r);
+		if (!rect) continue;
 		const scr = r.screen.getBoundingClientRect();
 		const zoom = scr.width / r.screen.offsetWidth || 1;
-		const rw = rect.width / zoom, rh = rect.height / zoom;
+		const rw = full.width / zoom, rh = full.height / zoom;
 		const min = device.tv ? 64 : 44;
 		if ((device.touch || device.tv) && Math.min(rw, rh) < min - 0.5) {
 			out.push({ level: Math.min(rw, rh) < 32 ? "fail" : "warn", rule: "tap target", path: r.path, el: r.el, message: `${Math.round(rw)}x${Math.round(rh)}px, aim for ${min}x${min} on ${device.touch ? "touch" : "tv"}` });
 		}
 		const dev = document.getElementById("device").getBoundingClientRect();
 		const left = (rect.left - dev.left) / zoom, top = (rect.top - dev.top) / zoom;
-		const right = left + rw, bottom = top + rh;
+		const right = left + rect.width / zoom, bottom = top + rect.height / zoom;
 		if (left < area.l - 0.5 || top < area.t - 0.5 || right > device.width - area.r + 0.5 || bottom > device.height - area.b + 0.5) {
 			const why = top < TOPBAR && state.topbar ? "overlaps the roblox top bar" : "is outside the safe area (notch / screen edge)";
 			out.push({ level: "warn", rule: "safe area", path: r.path, el: r.el, message: `button ${why}` });
@@ -714,8 +745,8 @@ function run_checks(device, area) {
 	return out;
 }
 
-// false when a scrolling frame or clipping parent hides the element completely
-function visible_record(r) {
+// the part of the element left after scrolling frames / clipping parents, null when fully hidden
+function visible_rect(r) {
 	const rect = r.el.getBoundingClientRect();
 	let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
 	for (let el = r.el.parentElement; el && el !== r.screen; el = el.parentElement) {
@@ -724,8 +755,10 @@ function visible_record(r) {
 		left = Math.max(left, c.left); top = Math.max(top, c.top);
 		right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
 	}
-	return right - left > 1 && bottom - top > 1;
+	if (right - left <= 1 || bottom - top <= 1) return null;
+	return { left, top, width: right - left, height: bottom - top, right, bottom };
 }
+const visible_record = (r) => visible_rect(r) !== null;
 
 // SHOW -------------------------
 
@@ -844,7 +877,7 @@ function render_side(checks) {
 	}
 	const hint = document.createElement("div");
 	hint.className = "hint";
-	hint.textContent = "Contrast: WCAG 2.2 (4.5:1 text, 3:1 large text) against the chosen backdrop. Tap targets: 44pt (Apple HIG), 64px on TV. Images show as placeholders unless mapped with sim.asset. Layout follows Roblox rules closely but not perfectly: confirm final polish in Studio.";
+	hint.textContent = "Sizing rules (RULES.md): scale instead of px offsets, ScaledSize strokes, TextScaled text, one UIScale per window; even padding and strokes of at least 1px are measured per device. Contrast: WCAG 2.2 (4.5:1 text, 3:1 large text) against the chosen backdrop. Tap targets: 44pt (Apple HIG), 64px on TV. Images show as placeholders unless mapped with sim.asset. Layout follows Roblox rules closely but not perfectly: confirm final polish in Studio.";
 	side.appendChild(hint);
 }
 

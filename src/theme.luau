@@ -57,7 +57,18 @@ return {
 		bold = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold),
 	},
 
-	-- outline thickness, scale of the label (StrokeSizingMode ScaledSize)
+	-- spacing, as a share of the element's SHORT side (ui.pad turns it into per-axis scale).
+	-- one step of the scale everywhere keeps gaps consistent between windows, cards and buttons
+	space = {
+		xs = 0.02,
+		sm = 0.04,
+		md = 0.06,
+		lg = 0.1,
+	},
+
+	-- outline thickness as a share of the element's short side (StrokeSizingMode ScaledSize).
+	-- big things need small numbers: 0.01 of a window is about as wide as 0.07 of a button.
+	-- sim/ shows the real px per device and flags outlines under 1px
 	stroke = {
 		title = 0.12,
 		label = 0.1,

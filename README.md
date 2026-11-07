@@ -3,7 +3,7 @@
 UI building blocks on top of [vide](https://github.com/centau/vide), in the "brainrot / cake" cartoon style:
 dark translucent navy windows, glossy studded headers, chunky 3D candy buttons, and heavy white text with a thick dark outline.
 Change `src/theme.luau` to restyle everything built with it: palettes, text gradients, fonts, outlines and asset ids.
-All sizes are scale (no px, no UITextSizeConstraint).
+All sizes are scale: no px offsets, scaled strokes, scaled text. The rules are in [RULES.md](RULES.md), and `ui.lint(root)` checks them in Studio or in the simulator.
 
 ## Use
 

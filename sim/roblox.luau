@@ -421,8 +421,9 @@ local property_defaults = {
 local class_defaults = {
 	UIGradient = { Color = ColorSequence.new(white), Transparency = NumberSequence.new(0), Rotation = 0 },
 	UIStroke = { Color = black },
-	TextBox = { Text = "TextBox" },
-	TextButton = { Text = "Button" },
+	TextBox = { Text = "TextBox", Size = UDim2.fromOffset(200, 50) },
+	TextLabel = { Size = UDim2.fromOffset(200, 50) },
+	TextButton = { Text = "Button", Size = UDim2.fromOffset(200, 50) },
 	ImageButton = {},
 }
 -- per class so a Color3 read off a UIGradient is a ColorSequence and off a UIStroke a Color3
@@ -879,13 +880,32 @@ function sim.screen(name: string?, props: { [string]: any }?)
 end
 
 -- save the current gui as one scene in the viewer. call it after setting up each state you want to see
+-- bright's own rule checker (src/lint.luau), run on every snapshot
+local function lint_guis(guis)
+	local packages = game:GetService("ReplicatedStorage"):FindFirstChild("Packages")
+	local bright = packages and packages:FindFirstChild("bright")
+	local module = bright and bright:FindFirstChild("lint")
+	if not module then return "" end
+	local lint = require_module(module)
+	local out = {}
+	for _, gui in guis do
+		for _, problem in lint(gui) do
+			table.insert(out, `\{"path":{json_string(problem.path)},"rule":{json_string(problem.rule)},"level":{json_string(problem.level)},"message":{json_string(problem.message)}\}`)
+		end
+	end
+	return table.concat(out, ",")
+end
+
 function sim.snapshot(label: string?)
 	flush_deferred()
-	local guis = {}
+	local guis, roots = {}, {}
 	for _, gui in player_gui:GetChildren() do
-		if gui:IsA("LayerCollector") then table.insert(guis, encode_instance(gui)) end
+		if gui:IsA("LayerCollector") then
+			table.insert(guis, encode_instance(gui))
+			table.insert(roots, gui)
+		end
 	end
-	table.insert(scenes, `\{"name":{json_string(label or `scene {#scenes + 1}`)},"guis":[{table.concat(guis, ",")}]\}`)
+	table.insert(scenes, `\{"name":{json_string(label or `scene {#scenes + 1}`)},"guis":[{table.concat(guis, ",")}],"lint":[{lint_guis(roots)}]\}`)
 end
 
 -- advance time: runs task.delay / task.wait / Heartbeat (vide springs) in 60 fps steps

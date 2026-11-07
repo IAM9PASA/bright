@@ -36,6 +36,9 @@
 -- ui.scroll_grid { columns = 4, ratio = 1, gap_x = 0.027, gap_y }   cells sized from the width
 -- ui.scroll_list { gap = 0.04 }              vertical list with edge spacers
 -- ui.square(ratio?) / ui.padding(x, y?)      constraints, padding is scale per axis
+-- ui.pad(space, aspect?)                     even padding: space = "sm" | number, share of the short side,
+--                                            aspect = width / height of the padded frame
+-- ui.lint(root)                              list rule breaks (offsets, px strokes, unscaled text), see RULES.md
 -- ui.gradient(colors, rotation?)             UIGradient from a color list, 90 = top to bottom
 --
 -- SCREEN
@@ -166,6 +169,20 @@ function ui.padding(x: number, y: number?)
 	local pad_x, pad_y = UDim.new(x, 0), UDim.new(y or x, 0)
 	return create "UIPadding" { PaddingLeft = pad_x, PaddingRight = pad_x, PaddingTop = pad_y, PaddingBottom = pad_y }
 end
+
+-- UIPadding scale is per axis, so ui.padding(0.05) on a 2:1 frame pads the sides twice as wide as the
+-- top. ui.pad measures from the short side instead: same px on all four sides at any screen size
+function ui.pad(space: string | number, aspect: number?)
+	local amount = if type(space) == "string" then theme.space[space] else space
+	assert(type(amount) == "number", `ui.pad: unknown space {space}`)
+	local ratio = aspect or 1
+	if ratio >= 1 then
+		return ui.padding(amount / ratio, amount)
+	end
+	return ui.padding(amount, amount * ratio)
+end
+
+ui.lint = require(script.lint)
 
 function ui.box(props)
 	defaults(props, { BackgroundTransparency = 1, BorderSizePixel = 0 })

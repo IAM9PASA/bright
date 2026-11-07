@@ -7,6 +7,7 @@
 //   node sim/run.mjs --shot               also save png screenshots + run design checks (needs playwright)
 //   node sim/run.mjs --serve              local server on :5173 that rebuilds + reloads on save
 //   node sim/run.mjs --device phone,desktop --shot
+//   node sim/run.mjs --strict             exit 1 on any sizing-rule fail (RULES.md), for ci
 //
 // needs a `luau` binary: `rokit install` (rokit.toml) or set LUAU=/path/to/luau
 
@@ -156,7 +157,23 @@ function run_example(luau, modules, example) {
 	fs.writeFileSync(html_path, template.replace("/*SIM_DATA*/null", json));
 	fs.writeFileSync(path.join(OUT, `${name}.json`), JSON.stringify(data, null, 1));
 	console.log(`[sim] ${name}: ${data.scenes.length} scene(s) -> ${path.relative(process.cwd(), html_path)}`);
-	return { name, html_path, data };
+
+	// sizing rules (src/lint.luau), same problems on every device so list each once
+	const seen = new Set();
+	const lint = [];
+	for (const scenes of Object.values(data.runs)) {
+		for (const scene of scenes) {
+			for (const p of scene.lint || []) {
+				const key = `${p.path}|${p.message}`;
+				if (seen.has(key)) continue;
+				seen.add(key);
+				lint.push(p);
+			}
+		}
+	}
+	console.log(lint.length ? `[rules] ${name}: ${lint.length} problem(s)` : `[rules] ${name}: scale rules ok`);
+	for (const p of lint) console.log(`    ${p.level.padEnd(4)} ${p.rule}: ${p.path} - ${p.message}`);
+	return { name, html_path, data, lint };
 }
 
 function build_all() {
@@ -261,9 +278,10 @@ if (flag("serve")) {
 	serve();
 } else {
 	const builds = build_all();
-	if (flag("shot")) {
-		const problems = await shoot(builds);
-		if (flag("strict") && problems > 0) process.exit(1);
-	}
+	// --strict: rule fails (and with --shot, any design check) exit non-zero, for ci
+	const rule_fails = builds.reduce((n, b) => n + b.lint.filter((p) => p.level === "fail").length, 0);
+	let problems = rule_fails;
+	if (flag("shot")) problems += await shoot(builds);
+	if (flag("strict") && problems > 0) process.exit(1);
 	if (builds.length === 0) process.exit(1);
 }
