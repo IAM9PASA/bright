@@ -1,4 +1,4 @@
--- ui tokens, change here to restyle every ui built with ui_kit
+-- ui tokens, change here to restyle every ui built with bright
 
 return {
 	color = {

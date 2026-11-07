@@ -8,9 +8,9 @@
 -- ui.row / ui.column { gap = 0.02, align = "center", cross = "center", fill = true }   gap = scale
 -- ui.list_layout { direction = "row" | "column", gap, align, cross, fill }   layout only
 -- ui.scroll_grid { cell = 0.155, gap_x = 0.0135, gap_y = 0.0135 }   square cells, all scale
--- ui.tab { Name, text, active }              pill tab with "label" + "button"
+-- ui.tab { Name, text, active }              pill tab with "label" + "button", active = bool or source
 -- ui.icon_button { Name, image }             square button with "image"
--- ui.hit { hover = true }                    invisible full-size "button" (hover lightens parent)
+-- ui.hit { hover = true, ... }               invisible full-size "button" (hover lightens parent)
 -- ui.square(ratio?) / ui.padding(x, y?)      constraints, padding is scale per axis
 -- everything is scale (user rule): no px offsets, no text size px limits
 -- ui.pop(gui, from?) / ui.pop_on(gui, property, from?, watch?)   scale-in animation (now / on change)
@@ -80,6 +80,11 @@ local function corner(radius: UDim)
 end
 
 function ui.gradient(colors: { Color3 }, rotation: number?)
+	-- one color has no span to spread over, ColorSequence.new(color) fills it flat
+	if #colors == 1 then
+		return create "UIGradient" { Color = ColorSequence.new(colors[1]), Rotation = rotation or 90 }
+	end
+
 	local keypoints = {}
 	for i, color in colors do
 		table.insert(keypoints, ColorSequenceKeypoint.new((i - 1) / (#colors - 1), color))
@@ -210,6 +215,11 @@ local function bind_states(button: GuiButton, target: GuiObject?)
 		if not base_color then return end
 		tween_to(theme.color.card_hover)
 	end)
+	-- touch never fires MouseLeave, so a tapped card stayed on the hover color: reset when the touch ends
+	button.InputEnded:Connect(function(input)
+		if not base_color or input.UserInputType ~= Enum.UserInputType.Touch then return end
+		tween_to(base_color)
+	end)
 end
 
 -- scale target from `from` back to 1. own UIScale so it never fights components.button's scale
@@ -234,15 +244,20 @@ end
 
 -- handlers and components.button look for a child named "button"
 -- hover = true gives the parent card hover + pressed states
+-- any other props (Activated handlers, LayoutOrder, ...) pass through to the button
 function ui.hit(props)
-	local button = create "ImageButton" {
+	props = props or {}
+	local hover = take(props, "hover")
+
+	defaults(props, {
 		Name = "button",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		ImageTransparency = 1,
 		ZIndex = 2,
-	}
-	if props and props.hover then
+	})
+	local button = create "ImageButton" (props)
+	if hover then
 		bind_states(button)
 	end
 	return button
@@ -312,9 +327,19 @@ function ui.tab(props)
 	local text = take(props, "text")
 	local active = take(props, "active")
 
+	-- active can be a plain bool or a vide source, so the tab follows state without a rebuild
+	local function pick(on, off)
+		if type(active) == "function" then
+			return function()
+				return if active() then on else off
+			end
+		end
+		return if active then on else off
+	end
+
 	defaults(props, {
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = active and 0 or 1,
+		BackgroundTransparency = pick(0, 1),
 		BorderSizePixel = 0,
 	})
 	table.insert(props, corner(theme.radius.pill))
@@ -323,7 +348,7 @@ function ui.tab(props)
 		Name = "label",
 		Text = text,
 		style = "title",
-		TextColor3 = active and theme.color.text or theme.color.text_dim,
+		TextColor3 = pick(theme.color.text, theme.color.text_dim),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(0.85, 0.5),
