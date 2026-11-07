@@ -64,7 +64,19 @@ ui.window {
 }
 ```
 
-Full API: header comment of `src/init.luau`. The pieces:
+Full API: header comment of `src/init.luau`.
+
+## Publishing
+
+bright is not on the Wally index yet, so `iam9pasa/bright@0.1.0` only resolves after the owner publishes it:
+
+```sh
+wally login                 # once, with the GitHub account that owns iam9pasa
+wally package --list        # check what ships: src/, default.project.json, wally.toml, README, RULES
+wally publish
+```
+
+Until then, add it as a git submodule or copy `src/` into your project as `Packages/bright` next to vide. The pieces:
 - **Windows:** `window`, `header`, `card`, `panel`.
 - **Text:** `text` (styles `cash`, `legendary`, `epic`, `rare`, `common`, `gems`, `item`, `rainbow`), `title` (white over dark drop edge).
 - **Controls:** `button` (3D candy, `palette` and `disabled` can be vide sources), `close_button`, `icon_button`, `tab`, `input`, `hud_button`, `hit`.
